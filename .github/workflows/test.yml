@@ -1,0 +1,122 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "v*.*"
+
+jobs:
+  linux:
+    runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pair: { elixir: "1.15.8", otp: "25.3" }
+            python_minor: "10"
+          - pair: { elixir: "1.18.1", otp: "27.2" }
+            python_minor: "10"
+          - pair: { elixir: "1.18.1", otp: "27.2" }
+            python_minor: "11"
+          - pair: { elixir: "1.18.1", otp: "27.2" }
+            python_minor: "12"
+          - pair: { elixir: "1.18.1", otp: "27.2" }
+            python_minor: "13"
+            lint: true
+    env:
+      MIX_ENV: test
+      PYTHONX_TEST_PYTHON_MINOR: ${{ matrix.python_minor }}
+    name: Linux (3.${{ matrix.python_minor }}, ${{ matrix.pair.elixir }}, ${{ matrix.pair.otp }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ matrix.pair.otp }}
+          elixir-version: ${{ matrix.pair.elixir }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ matrix.pair.elixir }}-${{ matrix.pair.otp }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-${{ matrix.pair.elixir }}-${{ matrix.pair.otp }}-
+      - run: mix deps.get
+      - run: mix format --check-formatted
+        if: ${{ matrix.lint }}
+      - run: mix deps.unlock --check-unused
+        if: ${{ matrix.lint }}
+      - run: mix deps.compile
+      - run: mix compile --warnings-as-errors
+        if: ${{ matrix.lint }}
+      - run: mix test
+
+  windows:
+    runs-on: windows-2019
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pair: { elixir: "1.15.8", otp: "25.3" }
+            python_minor: "10"
+          - pair: { elixir: "1.18.1", otp: "27.2" }
+            python_minor: "13"
+    env:
+      MIX_ENV: test
+      PYTHONX_TEST_PYTHON_MINOR: ${{ matrix.python_minor }}
+    name: Windows (3.${{ matrix.python_minor }}, ${{ matrix.pair.elixir }}, ${{ matrix.pair.otp }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ matrix.pair.otp }}
+          elixir-version: ${{ matrix.pair.elixir }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ matrix.pair.elixir }}-${{ matrix.pair.otp }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-${{ matrix.pair.elixir }}-${{ matrix.pair.otp }}-
+      - uses: ilammy/msvc-dev-cmd@v1
+      - run: mix deps.get
+      - run: mix deps.compile
+      - run: mix test
+
+  macos:
+    runs-on: macos-13
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pair: { elixir: "1.15.8", otp: "25.3" }
+            python_minor: "10"
+          - pair: { elixir: "1.18.1", otp: "27.2" }
+            python_minor: "13"
+    env:
+      MIX_ENV: test
+      PYTHONX_TEST_PYTHON_MINOR: ${{ matrix.python_minor }}
+    name: macOS (3.${{ matrix.python_minor }}, ${{ matrix.pair.elixir }}, ${{ matrix.pair.otp }})
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -fsSO https://elixir-lang.org/install.sh
+          sh install.sh elixir@${{ matrix.pair.elixir }} otp@${{ matrix.pair.otp }}
+          otp_bin=($HOME/.elixir-install/installs/otp/*/bin)
+          elixir_bin=($HOME/.elixir-install/installs/elixir/*/bin)
+          echo "$otp_bin" >> "$GITHUB_PATH"
+          echo "$elixir_bin" >> "$GITHUB_PATH"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ matrix.pair.elixir }}-${{ matrix.pair.otp }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-${{ matrix.pair.elixir }}-${{ matrix.pair.otp }}-
+      - run: mix deps.get
+      - run: mix deps.compile
+      - run: mix test

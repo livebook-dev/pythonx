@@ -1,0 +1,15 @@
+PRIV_DIR=$(MIX_APP_PATH)\priv
+NIF_PATH=$(PRIV_DIR)\libpythonx.dll
+
+C_SRC=$(MAKEDIR)\c_src\pythonx
+CPPFLAGS=/LD /std:c++17 /W4 /wd4100 /wd4458 /O2 /EHsc
+CPPFLAGS=$(CPPFLAGS) /I"$(ERTS_INCLUDE_DIR)"
+
+SOURCES=$(C_SRC)\*.cpp
+HEADERS=$(C_SRC)\*.hpp
+
+build: $(NIF_PATH)
+
+$(NIF_PATH): $(SOURCES) $(HEADERS)
+	@ if not exist "$(PRIV_DIR)" mkdir "$(PRIV_DIR)"
+	cl $(CPPFLAGS) $(SOURCES) /Fe"$(NIF_PATH)"
