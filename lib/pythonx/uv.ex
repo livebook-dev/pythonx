@@ -65,29 +65,28 @@ defmodule Pythonx.Uv do
     project_dir = project_dir(pyproject_toml, priv?)
 
     # Uv stores Python installations in versioned directories in the
-    # Python install dir. We find the specific one by looking at
-    # pyvenv.cfg. It stores an absolute path, so we cannot rely on
-    # that in releases. However, releases should use priv, and in
-    # that case we know there is only a single Python version, so we
-    # can resolve it directly.
-    root_dir =
-      if priv? do
-        python_install_dir(priv?) |> Path.join("*") |> wildcard_one!()
-      else
-        pyenv_cfg_path = Path.join(project_dir, ".venv/pyvenv.cfg")
+    # Python install dir. To find the versioned name for this project,
+    # we look at pyvenv.cfg. We could use the "home" path altogether,
+    # however it is an absolute path, so we cannot rely on it for priv
+    # in releases anyway, and for consistency we handle both cases the
+    # same way.
 
-        executable_dir =
-          pyenv_cfg_path
-          |> File.read!()
-          |> String.split("\n")
-          |> Enum.find_value(fn "home = " <> path -> path end)
-          |> Path.expand()
+    pyenv_cfg_path = Path.join(project_dir, ".venv/pyvenv.cfg")
 
-        case :os.type() do
-          {:win32, _osname} -> executable_dir
-          {:unix, _osname} -> Path.dirname(executable_dir)
-        end
+    abs_executable_dir =
+      pyenv_cfg_path
+      |> File.read!()
+      |> String.split("\n")
+      |> Enum.find_value(fn "home = " <> path -> path end)
+      |> Path.expand()
+
+    versioned_dir_name =
+      case :os.type() do
+        {:win32, _osname} -> Path.basename(abs_executable_dir)
+        {:unix, _osname} -> Path.basename(Path.dirname(abs_executable_dir))
       end
+
+    root_dir = Path.join(python_install_dir(priv?), versioned_dir_name)
 
     case :os.type() do
       {:win32, _osname} ->
