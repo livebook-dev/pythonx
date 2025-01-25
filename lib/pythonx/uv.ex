@@ -166,7 +166,13 @@ defmodule Pythonx.Uv do
   @version Mix.Project.config()[:version]
 
   defp cache_dir() do
-    base_dir = :filename.basedir(:user_cache, "pythonx")
+    base_dir =
+      if dir = System.get_env("PYTHONX_CACHE_DIR") do
+        Path.expand(dir)
+      else
+        :filename.basedir(:user_cache, "pythonx")
+      end
+
     Path.join([base_dir, @version, "uv", @uv_version])
   end
 
