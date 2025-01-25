@@ -104,15 +104,16 @@ Configure the desired Python version and dependencies in your
 ```elixir
 import Config
 
-config :pythonx, :uv_pyproject_toml, """
-[project]
-name = "project"
-version = "0.0.0"
-requires-python = "==3.13.*"
-dependencies = [
-  "numpy==2.2.2"
-]
-"""
+config :pythonx, :uv,
+  pyproject_toml: """
+  [project]
+  name = "project"
+  version = "0.0.0"
+  requires-python = "==3.13.*"
+  dependencies = [
+    "numpy==2.2.2"
+  ]
+  """
 ```
 
 With that, you can use `Pythonx.eval/2` and other APIs in your

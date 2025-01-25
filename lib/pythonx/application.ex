@@ -20,7 +20,7 @@ defmodule Pythonx.Application do
 
   # If configured, Python and dependencies are fetched at compile time,
   # so we automatically initialize the interpreter on boot.
-  if pyproject_toml = Application.compile_env(:pythonx, :uv_pyproject_toml) do
+  if pyproject_toml = Application.compile_env(:pythonx, :uv)[:pyproject_toml] do
     defp maybe_uv_init(), do: Pythonx.Uv.init(unquote(pyproject_toml), true)
   else
     defp maybe_uv_init(), do: :noop
@@ -28,6 +28,6 @@ defmodule Pythonx.Application do
 end
 
 # If configured, fetch Python and dependencies when compiling.
-if pyproject_toml = Application.compile_env(:pythonx, :uv_pyproject_toml) do
+if pyproject_toml = Application.compile_env(:pythonx, :uv)[:pyproject_toml] do
   Pythonx.Uv.fetch(pyproject_toml, true)
 end
