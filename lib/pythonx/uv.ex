@@ -13,9 +13,14 @@ defmodule Pythonx.Uv do
     opts = Keyword.validate!(opts, force: false)
 
     project_dir = project_dir(pyproject_toml, priv?)
+    python_install_dir = python_install_dir(priv?)
 
     if opts[:force] || priv? do
       _ = File.rm_rf(project_dir)
+    end
+
+    if priv? do
+      _ = File.rm_rf(python_install_dir)
     end
 
     if not File.dir?(project_dir) do
@@ -25,7 +30,7 @@ defmodule Pythonx.Uv do
       # We always use uv-managed Python, so the paths are predictable.
       if run!(["sync", "--python-preference", "only-managed"],
            cd: project_dir,
-           env: %{"UV_PYTHON_INSTALL_DIR" => python_install_dir(priv?)}
+           env: %{"UV_PYTHON_INSTALL_DIR" => python_install_dir}
          ) != 0 do
         _ = File.rm_rf(project_dir)
         raise "fetching Python and dependencies failed, see standard output for details"
