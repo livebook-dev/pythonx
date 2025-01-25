@@ -11,6 +11,20 @@ Pythonx runs a Python interpreter in the same OS process as your Elixir
 application, allowing you to evaluate Python code and conveniently
 convert between Python and Elixir data structures.
 
+The goal of this project is to better integrate Python workflows within
+Livebook and its usage in actual projects must be done with care due to
+Python's global interpreter lock (GIL), which prevents from multiple threads
+executing Python code at the same time. Consequently, calling `Pythonx`
+from multiple Elixir processes does not provide the concurrency you might
+expect and thus it can be a source of bottlenecks. However, this concerns
+regular Python code. Packages with CPU-intense functionality, such as `numpy`,
+have native implementation of many functions and invoking those releases the
+GIL. GIL is also released when waiting on I/O operations. In other words,
+if you are using this library to integrate with Python, make sure it happens
+in a single Elixir process or that its underlying libraries can deal with
+concurrent invocation. Otherwqise, prefer to use Elixir's `System.cmd/3` or
+`Port`s to manage multiple Python programs via I/O.
+
 ## Usage (script)
 
 Add Pythonx to your dependencies:
@@ -104,7 +118,7 @@ Configure the desired Python version and dependencies in your
 ```elixir
 import Config
 
-config :pythonx, :uv,
+config :pythonx, :uv_init,
   pyproject_toml: """
   [project]
   name = "project"
