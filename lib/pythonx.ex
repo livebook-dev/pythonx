@@ -288,6 +288,9 @@ defmodule Pythonx do
   @doc """
   Encodes the given term to a Python object.
 
+  Encoding can be extended to support custom data structures, see
+  `Pythonx.Encoder`.
+
   ## Examples
 
       iex> Pythonx.encode!({1, true, "hello world"})
