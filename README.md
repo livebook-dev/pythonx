@@ -118,7 +118,7 @@ Configure the desired Python version and dependencies in your
 ```elixir
 import Config
 
-config :pythonx, :uv,
+config :pythonx, :uv_init,
   pyproject_toml: """
   [project]
   name = "project"
