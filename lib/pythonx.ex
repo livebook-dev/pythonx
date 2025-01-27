@@ -10,6 +10,8 @@ defmodule Pythonx do
 
   alias Pythonx.Object
 
+  @type encoder :: (term(), encoder() -> Object.t())
+
   @doc """
   Initializes the Python interpreter.
 
@@ -202,7 +204,7 @@ defmodule Pythonx do
           raise ArgumentError, "expected globals keys to be strings, got: #{inspect(key)}"
         end
 
-        {key, Pythonx.Encoder.encode(value)}
+        {key, encode!(value)}
       end
 
     code_md5 = :erlang.md5(code)
@@ -299,9 +301,9 @@ defmodule Pythonx do
       >
 
   """
-  @spec encode!(term()) :: Object.t()
-  def encode!(term) do
-    Pythonx.Encoder.encode(term)
+  @spec encode!(term(), encoder()) :: Object.t()
+  def encode!(term, encoder \\ &Pythonx.Encoder.encode/2) do
+    encoder.(term, encoder)
   end
 
   @doc """
