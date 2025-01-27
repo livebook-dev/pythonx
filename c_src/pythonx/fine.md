@@ -57,15 +57,15 @@ FINE_INIT("Elixir.MyLib.NIF");
 ### Encoding/Decoding
 
 Terms are automatically encoded and decoded at the NIF boundary based
-on the function signature. You may also want to invoke encode/decode
-directly:
+on the function signature. In some cases, you may also want to invoke
+encode/decode directly:
 
 ```cpp
+// Encode
 auto message = std::string("hello world");
 auto term = fine::encode(env, message);
-```
 
-```cpp
+// Decode
 auto message = fine::decode<std::string>(env, term);
 ```
 
@@ -220,8 +220,8 @@ Structs can be particularly convenient when using NIF resource objects.
 When working with resources, it is common to have an Elixir struct
 corresponding to the resource. In the previous `Generator` example,
 you may define an Elixir struct such as `%MyLib.Generator{resource: reference}`.
-Instead of passing and returning the reference to the NIF, you can
-pass the struct itself:
+Instead of passing and returning the reference from the NIF, you can
+pass and return the struct itself:
 
 ```cpp
 #include <fine.hpp>
@@ -329,7 +329,7 @@ fine::raise(env, ExMyError{42})
 ### Atoms
 
 It is preferable to define atoms as static variables, this way the
-corresponding terms are create once, at NIF load time.
+corresponding terms are created once, at NIF load time.
 
 ```cpp
 namespace atoms {
