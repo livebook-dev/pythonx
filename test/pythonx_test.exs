@@ -63,6 +63,20 @@ defmodule PythonxTest do
       object = Pythonx.encode!(1)
       assert Pythonx.encode!(object) == object
     end
+
+    test "custom encoder" do
+      # Contrived example where we encode tuples as lists.
+
+      encoder = fn
+        tuple, encoder when is_tuple(tuple) ->
+          Pythonx.Encoder.encode(Tuple.to_list(tuple), encoder)
+
+        other, encoder ->
+          Pythonx.Encoder.encode(other, encoder)
+      end
+
+      assert repr(Pythonx.encode!({1, 2}, encoder)) == "[1, 2]"
+    end
   end
 
   describe "decode/1" do
