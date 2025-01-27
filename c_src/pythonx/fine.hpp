@@ -79,16 +79,16 @@ private:
 };
 
 namespace __private__::atoms {
-inline Atom ok("ok");
-inline Atom error("error");
-inline Atom nil("nil");
-inline Atom true_("true");
-inline Atom false_("false");
-inline Atom __struct__("__struct__");
-inline Atom __exception__("__exception__");
-inline Atom message("message");
-inline Atom ElixirArgumentError("Elixir.ArgumentError");
-inline Atom ElixirRuntimeError("Elixir.RuntimeError");
+inline auto ok = Atom("ok");
+inline auto error = Atom("error");
+inline auto nil = Atom("nil");
+inline auto true_ = Atom("true");
+inline auto false_ = Atom("false");
+inline auto __struct__ = Atom("__struct__");
+inline auto __exception__ = Atom("__exception__");
+inline auto message = Atom("message");
+inline auto ElixirArgumentError = Atom("Elixir.ArgumentError");
+inline auto ElixirRuntimeError = Atom("Elixir.RuntimeError");
 } // namespace __private__::atoms
 
 // Result tagged tuples
@@ -350,7 +350,7 @@ struct Decoder<T, std::void_t<decltype(T::module), decltype(T::fields)>> {
 private:
   template <typename U>
   static void set_field(ErlNifEnv *env, ERL_NIF_TERM term, T &ex_struct,
-                        Atom *atom, U T::*field_ptr) {
+                        U T::*field_ptr, const Atom *atom) {
     ERL_NIF_TERM value;
     if (!enif_get_map_value(env, term, encode(env, *atom), &value)) {
       throw std::invalid_argument(
@@ -546,9 +546,9 @@ private:
 
     std::apply(
         [&](auto... field) {
-          ((keys[Indices] = fine::encode(env, *std::get<0>(field)),
+          ((keys[Indices] = fine::encode(env, *std::get<1>(field)),
             values[Indices] =
-                fine::encode(env, ex_struct.*(std::get<1>(field)))),
+                fine::encode(env, ex_struct.*(std::get<0>(field)))),
            ...);
         },
         fields);
@@ -846,11 +846,13 @@ inline int load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info) {
     return fine::nif(env, argc, argv, name);                                   \
   }                                                                            \
   auto __nif_registration_##name = fine::Registration::register_nif(           \
-      {#name, fine::nif_arity(name), name##_nif, flags});
+      {#name, fine::nif_arity(name), name##_nif, flags});                      \
+  static_assert(true, "require a semicolon after the macro")
 
 #define FINE_RESOURCE(class_name)                                              \
   auto __resource_registration_##class_name =                                  \
-      fine::Registration::register_resource<class_name>(#class_name);
+      fine::Registration::register_resource<class_name>(#class_name);          \
+  static_assert(true, "require a semicolon after the macro")
 
 // This is a modified version of ERL_NIF_INIT that points to the
 // registered NIF functions and also sets the load callback.
@@ -865,7 +867,7 @@ inline int load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info) {
     auto load = fine::__private__::load;                                       \
     static ErlNifEntry entry = {ERL_NIF_MAJOR_VERSION,                         \
                                 ERL_NIF_MINOR_VERSION,                         \
-                                #name,                                         \
+                                name,                                          \
                                 num_funcs,                                     \
                                 funcs,                                         \
                                 load,                                          \
@@ -879,7 +881,8 @@ inline int load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info) {
     ERL_NIF_INIT_BODY;                                                         \
     return &entry;                                                             \
   }                                                                            \
-  ERL_NIF_INIT_EPILOGUE
+  ERL_NIF_INIT_EPILOGUE                                                        \
+  static_assert(true, "require a semicolon after the macro")
 
 } // namespace fine
 

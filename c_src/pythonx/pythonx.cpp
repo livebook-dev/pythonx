@@ -73,20 +73,20 @@ void ensure_initialized() {
 }
 
 namespace atoms {
-fine::Atom ElixirPythonxError("Elixir.Pythonx.Error");
-fine::Atom ElixirPythonxJanitor("Elixir.Pythonx.Janitor");
-fine::Atom ElixirPythonxObject("Elixir.Pythonx.Object");
-fine::Atom decref("decref");
-fine::Atom integer("integer");
-fine::Atom list("list");
-fine::Atom map("map");
-fine::Atom map_set("map_set");
-fine::Atom output("output");
-fine::Atom ref("ref");
-fine::Atom traceback("traceback");
-fine::Atom tuple("tuple");
-fine::Atom type("type");
-fine::Atom value("value");
+auto ElixirPythonxError = fine::Atom("Elixir.Pythonx.Error");
+auto ElixirPythonxJanitor = fine::Atom("Elixir.Pythonx.Janitor");
+auto ElixirPythonxObject = fine::Atom("Elixir.Pythonx.Object");
+auto decref = fine::Atom("decref");
+auto integer = fine::Atom("integer");
+auto list = fine::Atom("list");
+auto map = fine::Atom("map");
+auto map_set = fine::Atom("map_set");
+auto output = fine::Atom("output");
+auto ref = fine::Atom("ref");
+auto traceback = fine::Atom("traceback");
+auto tuple = fine::Atom("tuple");
+auto type = fine::Atom("type");
+auto value = fine::Atom("value");
 } // namespace atoms
 
 struct ExObjectResource {
@@ -124,7 +124,7 @@ struct ExObjectResource {
   }
 };
 
-FINE_RESOURCE(ExObjectResource)
+FINE_RESOURCE(ExObjectResource);
 
 struct ExObject {
   fine::ResourcePtr<ExObjectResource> resource;
@@ -135,7 +135,7 @@ struct ExObject {
   static constexpr auto module = &atoms::ElixirPythonxObject;
 
   static constexpr auto fields() {
-    return std::make_tuple(std::make_tuple(&atoms::ref, &ExObject::resource));
+    return std::make_tuple(std::make_tuple(&ExObject::resource, &atoms::ref));
   }
 };
 
@@ -152,9 +152,9 @@ struct ExError {
 
   static constexpr auto fields() {
     return std::make_tuple(
-        std::make_tuple(&atoms::type, &ExError::type),
-        std::make_tuple(&atoms::value, &ExError::value),
-        std::make_tuple(&atoms::traceback, &ExError::traceback));
+        std::make_tuple(&ExError::type, &atoms::type),
+        std::make_tuple(&ExError::value, &atoms::value),
+        std::make_tuple(&ExError::traceback, &atoms::traceback));
   }
 
   static constexpr auto is_exception = true;
@@ -395,7 +395,7 @@ sys.stdin = Stdin()
   return fine::Ok<>();
 }
 
-FINE_NIF(init, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(init, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 // Note that this NIF is here for the reference, but currently we do
 // not support deinitialization. While in principle it should be
@@ -429,7 +429,7 @@ fine::Ok<> terminate(ErlNifEnv *env) {
   return fine::Ok<>();
 }
 
-FINE_NIF(terminate, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(terminate, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 fine::Ok<> janitor_decref(ErlNifEnv *env, uint64_t ptr) {
   auto init_guard = std::lock_guard<std::mutex>(init_mutex);
@@ -446,7 +446,7 @@ fine::Ok<> janitor_decref(ErlNifEnv *env, uint64_t ptr) {
   return fine::Ok<>();
 }
 
-FINE_NIF(janitor_decref, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(janitor_decref, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject none_new(ErlNifEnv *env) {
   ensure_initialized();
@@ -459,7 +459,7 @@ ExObject none_new(ErlNifEnv *env) {
   return ExObject(fine::make_resource<ExObjectResource>(py_none));
 }
 
-FINE_NIF(none_new, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(none_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject false_new(ErlNifEnv *env) {
   ensure_initialized();
@@ -471,7 +471,7 @@ ExObject false_new(ErlNifEnv *env) {
   return ExObject(fine::make_resource<ExObjectResource>(py_bool));
 }
 
-FINE_NIF(false_new, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(false_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject true_new(ErlNifEnv *env) {
   ensure_initialized();
@@ -483,7 +483,7 @@ ExObject true_new(ErlNifEnv *env) {
   return ExObject(fine::make_resource<ExObjectResource>(py_bool));
 }
 
-FINE_NIF(true_new, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(true_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject long_from_int64(ErlNifEnv *env, int64_t number) {
   ensure_initialized();
@@ -495,7 +495,7 @@ ExObject long_from_int64(ErlNifEnv *env, int64_t number) {
   return ExObject(fine::make_resource<ExObjectResource>(py_long));
 }
 
-FINE_NIF(long_from_int64, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(long_from_int64, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject long_from_string(ErlNifEnv *env, std::string string, int64_t base) {
   ensure_initialized();
@@ -508,7 +508,7 @@ ExObject long_from_string(ErlNifEnv *env, std::string string, int64_t base) {
   return ExObject(fine::make_resource<ExObjectResource>(py_long));
 }
 
-FINE_NIF(long_from_string, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(long_from_string, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject float_new(ErlNifEnv *env, double number) {
   ensure_initialized();
@@ -520,7 +520,7 @@ ExObject float_new(ErlNifEnv *env, double number) {
   return ExObject(fine::make_resource<ExObjectResource>(py_float));
 }
 
-FINE_NIF(float_new, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(float_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject bytes_from_binary(ErlNifEnv *env, ErlNifBinary binary) {
   ensure_initialized();
@@ -533,7 +533,7 @@ ExObject bytes_from_binary(ErlNifEnv *env, ErlNifBinary binary) {
   return ExObject(fine::make_resource<ExObjectResource>(py_object));
 }
 
-FINE_NIF(bytes_from_binary, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(bytes_from_binary, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject unicode_from_string(ErlNifEnv *env, ErlNifBinary binary) {
   ensure_initialized();
@@ -547,7 +547,7 @@ ExObject unicode_from_string(ErlNifEnv *env, ErlNifBinary binary) {
   return ExObject(fine::make_resource<ExObjectResource>(py_object));
 }
 
-FINE_NIF(unicode_from_string, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(unicode_from_string, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 fine::Term unicode_to_string(ErlNifEnv *env, ExObject ex_object) {
   ensure_initialized();
@@ -556,7 +556,7 @@ fine::Term unicode_to_string(ErlNifEnv *env, ExObject ex_object) {
   return py_object_to_binary_term(env, ex_object.resource->py_object);
 }
 
-FINE_NIF(unicode_to_string, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(unicode_to_string, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject dict_new(ErlNifEnv *env) {
   ensure_initialized();
@@ -568,7 +568,7 @@ ExObject dict_new(ErlNifEnv *env) {
   return ExObject(fine::make_resource<ExObjectResource>(py_dict));
 }
 
-FINE_NIF(dict_new, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(dict_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 fine::Ok<> dict_set_item(ErlNifEnv *env, ExObject ex_object, ExObject ex_key,
                          ExObject ex_value) {
@@ -583,7 +583,7 @@ fine::Ok<> dict_set_item(ErlNifEnv *env, ExObject ex_object, ExObject ex_key,
   return fine::Ok<>();
 }
 
-FINE_NIF(dict_set_item, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(dict_set_item, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject tuple_new(ErlNifEnv *env, uint64_t size) {
   ensure_initialized();
@@ -595,7 +595,7 @@ ExObject tuple_new(ErlNifEnv *env, uint64_t size) {
   return ExObject(fine::make_resource<ExObjectResource>(py_tuple));
 }
 
-FINE_NIF(tuple_new, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(tuple_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 fine::Ok<> tuple_set_item(ErlNifEnv *env, ExObject ex_object, uint64_t index,
                           ExObject ex_value) {
@@ -612,7 +612,7 @@ fine::Ok<> tuple_set_item(ErlNifEnv *env, ExObject ex_object, uint64_t index,
   return fine::Ok<>();
 }
 
-FINE_NIF(tuple_set_item, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(tuple_set_item, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject list_new(ErlNifEnv *env, uint64_t size) {
   ensure_initialized();
@@ -624,7 +624,7 @@ ExObject list_new(ErlNifEnv *env, uint64_t size) {
   return ExObject(fine::make_resource<ExObjectResource>(py_tuple));
 }
 
-FINE_NIF(list_new, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(list_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 fine::Ok<> list_set_item(ErlNifEnv *env, ExObject ex_object, uint64_t index,
                          ExObject ex_value) {
@@ -641,7 +641,7 @@ fine::Ok<> list_set_item(ErlNifEnv *env, ExObject ex_object, uint64_t index,
   return fine::Ok<>();
 }
 
-FINE_NIF(list_set_item, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(list_set_item, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject set_new(ErlNifEnv *env) {
   ensure_initialized();
@@ -653,7 +653,7 @@ ExObject set_new(ErlNifEnv *env) {
   return ExObject(fine::make_resource<ExObjectResource>(py_set));
 }
 
-FINE_NIF(set_new, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(set_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 fine::Ok<> set_add(ErlNifEnv *env, ExObject ex_object, ExObject ex_key) {
   ensure_initialized();
@@ -666,7 +666,7 @@ fine::Ok<> set_add(ErlNifEnv *env, ExObject ex_object, ExObject ex_key) {
   return fine::Ok<>();
 }
 
-FINE_NIF(set_add, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(set_add, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject object_repr(ErlNifEnv *env, ExObject ex_object) {
   ensure_initialized();
@@ -678,7 +678,7 @@ ExObject object_repr(ErlNifEnv *env, ExObject ex_object) {
   return ExObject(fine::make_resource<ExObjectResource>(py_repr));
 }
 
-FINE_NIF(object_repr, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(object_repr, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 fine::Term format_exception(ErlNifEnv *env, ExError error) {
   ensure_initialized();
@@ -722,7 +722,7 @@ fine::Term format_exception(ErlNifEnv *env, ExError error) {
                                    static_cast<unsigned int>(size));
 }
 
-FINE_NIF(format_exception, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(format_exception, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
   ensure_initialized();
@@ -939,7 +939,7 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
   return fine::encode(env, ex_object);
 }
 
-FINE_NIF(decode_once, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(decode_once, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 std::tuple<PyObjectPtr, PyObjectPtr> compile(ErlNifEnv *env,
                                              ErlNifBinary code) {
@@ -1336,11 +1336,11 @@ eval(ErlNifEnv *env, ErlNifBinary code, std::string code_md5,
       ExObject(fine::make_resource<ExObjectResource>(py_result)), map);
 }
 
-FINE_NIF(eval, ERL_NIF_DIRTY_JOB_CPU_BOUND)
+FINE_NIF(eval, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 } // namespace pythonx
 
-FINE_INIT(Elixir.Pythonx.NIF);
+FINE_INIT("Elixir.Pythonx.NIF");
 
 // Below are functions we call from Python code
 
