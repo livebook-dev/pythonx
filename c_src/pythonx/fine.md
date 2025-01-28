@@ -16,14 +16,15 @@ NIFs in C++.
 
 - Smart pointer enabling safe management of resource objects.
 
-- Registering NIFs and resource types via simple annotations. Creating
-  all static atoms at load time.
+- Registering NIFs and resource types via simple annotations.
 
 - Support for encoding/decoding Elixir structs based on compile time
   metadata.
 
 - Propagating C++ exceptions as Elixir exceptions, with support for
   raising custom Elixir exceptions.
+
+- Creating all static atoms at load time.
 
 ## Motivation
 
@@ -202,8 +203,8 @@ struct ExPoint {
   static constexpr auto module = &atoms::ElixirMyLibPoint;
 
   static constexpr auto fields() {
-    return std::make_tuple(std::make_tuple(&atoms::x, &ExPoint::x),
-                           std::make_tuple(&atoms::y, &ExPoint::y));
+    return std::make_tuple(std::make_tuple(&ExPoint::x, &atoms::x),
+                           std::make_tuple(&ExPoint::y, &atoms::y));
   }
 };
 
@@ -245,7 +246,7 @@ struct ExGenerator {
 
   static constexpr auto fields() {
     return std::make_tuple(
-      std::make_tuple(&atoms::resource, &ExGenerator::resource),
+      std::make_tuple(&ExGenerator::resource, &atoms::resource),
     );
   }
 };
@@ -312,7 +313,7 @@ struct ExMyError {
 
   static constexpr auto fields() {
     return std::make_tuple(
-        std::make_tuple(&atoms::data, &ExMyError::data));
+        std::make_tuple(&ExMyError::data, &atoms::data));
   }
 
   static constexpr auto is_exception = true;
