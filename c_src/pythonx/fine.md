@@ -338,6 +338,44 @@ namespace atoms {
 }
 ```
 
+### Result types
+
+When it comes to NIFs, errors often indicate unexpected failures and
+raising an exception makes sense, however you may also want to handle
+certain errors gracefully by returning `:ok`/`:error` tuples, similarly
+to usual Elixir functions. Fine provides `Ok<...>` and `Error<...>`
+types for this purpose.
+
+```cpp
+fine::Ok<>()
+// :ok
+
+fine::Ok<int64_t>(1)
+// {:ok, 1}
+
+fine::Error<>()
+// :error
+
+fine::Error<std::string>("something went wrong")
+// {:error, "something went wrong"}
+```
+
+You can use `std::variant` to express a union of possible result types
+a NIF may return:
+
+```cpp
+std::variant<fine::Ok<int64_t>, fine::Error<std::string>> find_meaning(ErlNifEnv *env) {
+  if (...) {
+    return fine::Error<std::string>("something went wrong");
+  }
+
+  return fine::Ok<int64_t>(42);
+}
+```
+
+Note that if you use a particular union frequently, it may be convenient
+to define a type alias with `using`/`typedef` to keep signatures brief.
+
 ## Prior work
 
 Some of the ideas have been previously explored by Serge Aleynikov (@saleyn)
