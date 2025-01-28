@@ -1,0 +1,110 @@
+name: Release
+on:
+  push:
+    tags:
+      - "v*.*.*"
+permissions:
+  contents: write
+jobs:
+  linux:
+    runs-on: ubuntu-20.04
+    env:
+      MIX_ENV: prod
+      ELIXIR_VERSION: "1.15.3"
+    strategy:
+      matrix:
+        otp_version: ["25.3"]
+    name: Linux x86_64 (${{ matrix.otp_version }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ matrix.otp_version }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+      - name: Install system dependecies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential automake autoconf pkg-config bc m4 unzip zip \
+            gcc g++ \
+            gcc-i686-linux-gnu g++-i686-linux-gnu \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+            gcc-riscv64-linux-gnu g++-riscv64-linux-gnu \
+            gcc-powerpc64le-linux-gnu g++-powerpc64le-linux-gnu \
+            gcc-s390x-linux-gnu g++-s390x-linux-gnu
+      - name: Precompile
+        run: |
+          export ELIXIR_MAKE_CACHE_DIR=$(pwd)/cache
+          mkdir -p "${ELIXIR_MAKE_CACHE_DIR}"
+          mix deps.get
+          mix elixir_make.precompile
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          draft: true
+          files: |
+            cache/*.tar.gz
+            cache/*.sha256
+
+  macos:
+    runs-on: macos-13
+    env:
+      MIX_ENV: prod
+      ELIXIR_VERSION: "1.15.3"
+    strategy:
+      matrix:
+        otp_version: ["25.3"]
+    name: macOS x86_64 (${{ matrix.otp_version }})
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -fsSO https://elixir-lang.org/install.sh
+          sh install.sh elixir@${{ env.ELIXIR_VERSION }} otp@${{ matrix.otp_version }}
+          otp_bin=($HOME/.elixir-install/installs/otp/*/bin)
+          elixir_bin=($HOME/.elixir-install/installs/elixir/*/bin)
+          echo "$otp_bin" >> "$GITHUB_PATH"
+          echo "$elixir_bin" >> "$GITHUB_PATH"
+      - name: Precompile
+        run: |
+          export ELIXIR_MAKE_CACHE_DIR=$(pwd)/cache
+          mkdir -p "${ELIXIR_MAKE_CACHE_DIR}"
+          mix deps.get
+          mix elixir_make.precompile
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          draft: true
+          files: |
+            cache/*.tar.gz
+            cache/*.sha256
+
+  windows:
+    runs-on: windows-2019
+    env:
+      MIX_ENV: prod
+      ELIXIR_VERSION: "1.15.3"
+    strategy:
+      matrix:
+        otp_version: ["25.3"]
+    name: Windows x86_64 (${{ matrix.otp_version }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ matrix.otp_version }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Precompile
+        shell: bash
+        run: |
+          export ELIXIR_MAKE_CACHE_DIR=$(pwd)/cache
+          mkdir -p "${ELIXIR_MAKE_CACHE_DIR}"
+          mix deps.get
+          mix elixir_make.precompile
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          draft: true
+          files: |
+            cache/*.tar.gz
+            cache/*.sha256

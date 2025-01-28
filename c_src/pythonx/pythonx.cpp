@@ -205,12 +205,6 @@ void raise_if_failed(ErlNifEnv *env, const char *buffer) {
   }
 }
 
-void raise_if_failed(ErlNifEnv *env, int result) {
-  if (result == -1) {
-    raise_py_error(env);
-  }
-}
-
 void raise_if_failed(ErlNifEnv *env, Py_ssize_t size) {
   if (size == -1) {
     raise_py_error(env);

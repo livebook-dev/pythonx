@@ -1,12 +1,10 @@
 name: Test
-
 on:
   pull_request:
   push:
     branches:
       - main
       - "v*.*"
-
 jobs:
   linux:
     runs-on: ubuntu-20.04
@@ -28,7 +26,7 @@ jobs:
     env:
       MIX_ENV: test
       PYTHONX_TEST_PYTHON_MINOR: ${{ matrix.python_minor }}
-    name: Linux (3.${{ matrix.python_minor }}, ${{ matrix.pair.elixir }}, ${{ matrix.pair.otp }})
+    name: Linux x86_64 (3.${{ matrix.python_minor }}, ${{ matrix.pair.elixir }}, ${{ matrix.pair.otp }})
     steps:
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
@@ -66,7 +64,7 @@ jobs:
     env:
       MIX_ENV: test
       PYTHONX_TEST_PYTHON_MINOR: ${{ matrix.python_minor }}
-    name: Windows (3.${{ matrix.python_minor }}, ${{ matrix.pair.elixir }}, ${{ matrix.pair.otp }})
+    name: Windows x86_64 (3.${{ matrix.python_minor }}, ${{ matrix.pair.elixir }}, ${{ matrix.pair.otp }})
     steps:
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
@@ -99,7 +97,7 @@ jobs:
     env:
       MIX_ENV: test
       PYTHONX_TEST_PYTHON_MINOR: ${{ matrix.python_minor }}
-    name: macOS (3.${{ matrix.python_minor }}, ${{ matrix.pair.elixir }}, ${{ matrix.pair.otp }})
+    name: macOS x86_64 (3.${{ matrix.python_minor }}, ${{ matrix.pair.elixir }}, ${{ matrix.pair.otp }})
     steps:
       - uses: actions/checkout@v4
       - run: |

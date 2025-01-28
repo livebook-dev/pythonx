@@ -21,3 +21,6 @@ pythonx-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+# Checksums for precompile binaries.
+/checksum.exs

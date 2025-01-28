@@ -30,4 +30,4 @@ build: $(NIF_PATH)
 
 $(NIF_PATH): $(SOURCES) $(HEADERS)
 	@ mkdir -p $(PRIV_DIR)
-	$(CC) $(CPPFLAGS) $(SOURCES) -o $(NIF_PATH)
+	$(CXX) $(CPPFLAGS) $(SOURCES) -o $(NIF_PATH)
