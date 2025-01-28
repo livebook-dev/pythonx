@@ -200,6 +200,25 @@ defmodule Pythonx.ASTTest do
              }
     end
 
+    test "try" do
+      assert Pythonx.AST.scan_globals("""
+             try:
+               raise RuntimeError("error")
+             except RuntimeError as e:
+               x = e
+             """) == %{referenced: MapSet.new([]), defined: MapSet.new(["x"])}
+
+      assert Pythonx.AST.scan_globals("""
+             try:
+               raise RuntimeError("error")
+             except RuntimeError as e1:
+               try:
+                 raise RuntimeError("error")
+               except RuntimeError as e2:
+                 x = (e1, e2)
+             """) == %{referenced: MapSet.new([]), defined: MapSet.new(["x"])}
+    end
+
     test "global in top-level expression" do
       assert Pythonx.AST.scan_globals("""
              x + 1

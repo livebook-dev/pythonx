@@ -9,6 +9,8 @@ class GlobalsVisitor(ast.NodeVisitor):
     self.scopes = []
     # Add the global scope to the stack.
     self._push_scope()
+    # Scope information specific to exception handlers.
+    self.exception_handler_scopes = []
 
   def _push_scope(self, is_comprehension=False):
     self.scopes.append({"defs": set(), "is_comprehension": is_comprehension})
@@ -16,8 +18,16 @@ class GlobalsVisitor(ast.NodeVisitor):
   def _pop_scope(self):
     self.scopes.pop()
 
+  def _push_exception_handler_scope(self):
+    self.exception_handler_scopes.append({"defs": set()})
+
+  def _pop_exception_handler_scope(self):
+    self.exception_handler_scopes.pop()
+
   def _handle_ref(self, name):
-    is_defined = any(name in scope["defs"] for scope in self.scopes)
+    is_defined = any(name in scope["defs"] for scope in self.scopes) or any(
+      name in scope["defs"] for scope in self.exception_handler_scopes
+    )
 
     if not is_defined:
       self.refs.add(name)
@@ -163,6 +173,15 @@ class GlobalsVisitor(ast.NodeVisitor):
       self.visit(node.value)
 
     self.visit(node.target)
+
+  def visit_ExceptHandler(self, node):
+    # Exception handlers define local variables available only within
+    # the handler, however the handler body is still within the outer
+    # scope, so we add a special ref-only scope.
+    self._push_exception_handler_scope()
+    self.exception_handler_scopes[-1]["defs"].add(node.name)
+    self.generic_visit(node)
+    self._pop_exception_handler_scope()
 
   def visit_MatchAs(self, node):
     if node.name is not None:
