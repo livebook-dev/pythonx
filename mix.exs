@@ -45,7 +45,9 @@ defmodule Pythonx.MixProject do
   end
 
   defp docs() do
-    []
+    [
+      main: "Pythonx"
+    ]
   end
 
   defp package do
