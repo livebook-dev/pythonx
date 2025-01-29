@@ -155,7 +155,7 @@ defmodule PythonxTest do
                  %{}
                )
 
-      assert repr(result) == "None"
+      assert result == nil
       assert repr(nums) == "[1, 2, 3]"
       assert repr(sum) == "6"
     end
@@ -174,12 +174,12 @@ defmodule PythonxTest do
       assert repr(result) == "2"
     end
 
-    test "returns none for empty code" do
+    test "returns nil for empty code" do
       assert {result, %{}} = Pythonx.eval("", %{})
-      assert repr(result) == "None"
+      assert result == nil
 
       assert {result, %{}} = Pythonx.eval("# Comment", %{})
-      assert repr(result) == "None"
+      assert result == nil
     end
 
     test "encodes terms given as globals" do

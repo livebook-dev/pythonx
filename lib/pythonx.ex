@@ -108,8 +108,8 @@ defmodule Pythonx do
   by calling `encode!/1`.
 
   The function returns the evaluation result and a map with the updated
-  global variables. Note that, unless `code` ends with an expression,
-  the result will be a `None` object.
+  global variables. Note that the result is an object only if `code`
+  ends with an expression, otherwise it is `nil`.
 
   If the Python code raises an exception, `Pythonx.Error` is raised and
   the message includes the usual Python error message with traceback.
@@ -196,7 +196,7 @@ defmodule Pythonx do
 
   '''
   @spec eval(String.t(), %{optional(String.t()) => term()}) ::
-          {Object.t(), %{optional(String.t()) => Object.t()}}
+          {Object.t() | nil, %{optional(String.t()) => Object.t()}}
   def eval(code, globals) do
     globals =
       for {key, value} <- globals do

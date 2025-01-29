@@ -1105,7 +1105,7 @@ std::tuple<PyObjectPtr, PyObjectPtr> compile(ErlNifEnv *env,
   return std::make_tuple(py_body_code, py_last_expr_code);
 }
 
-std::tuple<ExObject, fine::Term>
+std::tuple<std::optional<ExObject>, fine::Term>
 eval(ErlNifEnv *env, ErlNifBinary code, std::string code_md5,
      std::vector<std::tuple<ErlNifBinary, ExObject>> globals,
      ErlNifPid stdout_device, ErlNifPid stderr_device) {
@@ -1276,14 +1276,12 @@ eval(ErlNifEnv *env, ErlNifBinary code, std::string code_md5,
     Py_DecRef(py_body_result);
   }
 
-  PyObjectPtr py_result;
+  auto result = std::optional<ExObject>();
 
-  if (py_last_expr_code == nullptr) {
-    py_result = Py_BuildValue("");
+  if (py_last_expr_code != nullptr) {
+    auto py_result = PyEval_EvalCode(py_last_expr_code, py_globals, py_globals);
     raise_if_failed(env, py_result);
-  } else {
-    py_result = PyEval_EvalCode(py_last_expr_code, py_globals, py_globals);
-    raise_if_failed(env, py_result);
+    result = ExObject(fine::make_resource<ExObjectResource>(py_result));
   }
 
   // Step 4: flat-decode globals
@@ -1326,8 +1324,7 @@ eval(ErlNifEnv *env, ErlNifBinary code, std::string code_md5,
     throw std::runtime_error("failed to make a map");
   }
 
-  return std::make_tuple(
-      ExObject(fine::make_resource<ExObjectResource>(py_result)), map);
+  return std::make_tuple(result, map);
 }
 
 FINE_NIF(eval, ERL_NIF_DIRTY_JOB_CPU_BOUND);
