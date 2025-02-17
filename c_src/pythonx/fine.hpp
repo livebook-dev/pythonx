@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <erl_nif.h>
+#include <map>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -50,11 +51,11 @@ class Atom {
   inline static std::vector<Atom *> atoms = {};
   inline static bool initialized = false;
 
-  const char *name;
+  std::string name;
   std::optional<ERL_NIF_UINT> term;
 
 public:
-  Atom(const char *name) : name(name), term(std::nullopt) {
+  Atom(std::string name) : name(name), term(std::nullopt) {
     if (!Atom::initialized) {
       Atom::atoms.push_back(this);
     }
@@ -62,10 +63,16 @@ public:
 
   std::string to_string() const { return this->name; }
 
+  bool operator==(const Atom &other) const { return this->name == other.name; }
+
+  bool operator==(const char *other) const { return this->name == other; }
+
+  bool operator<(const Atom &other) const { return this->name < other.name; }
+
 private:
   static void init_atoms(ErlNifEnv *env) {
     for (auto atom : Atom::atoms) {
-      atom->term = fine::__private__::make_atom(env, atom->name);
+      atom->term = fine::__private__::make_atom(env, atom->name.c_str());
     }
 
     Atom::atoms.clear();
@@ -205,6 +212,23 @@ template <> struct Decoder<double> {
   }
 };
 
+template <> struct Decoder<bool> {
+  static bool decode(ErlNifEnv *env, const ERL_NIF_TERM &term) {
+    char atom_string[6];
+    auto length = enif_get_atom(env, term, atom_string, 6, ERL_NIF_LATIN1);
+
+    if (length == 5 && strcmp(atom_string, "true") == 0) {
+      return true;
+    }
+
+    if (length == 6 && strcmp(atom_string, "false") == 0) {
+      return false;
+    }
+
+    throw std::invalid_argument("decode failed, expected a boolean");
+  }
+};
+
 template <> struct Decoder<ErlNifPid> {
   static ErlNifPid decode(ErlNifEnv *env, const ERL_NIF_TERM &term) {
     ErlNifPid pid;
@@ -233,6 +257,24 @@ template <> struct Decoder<std::string> {
   }
 };
 
+template <> struct Decoder<Atom> {
+  static Atom decode(ErlNifEnv *env, const ERL_NIF_TERM &term) {
+    unsigned int length;
+    if (!enif_get_atom_length(env, term, &length, ERL_NIF_LATIN1)) {
+      throw std::invalid_argument("decode failed, expected an atom");
+    }
+
+    auto buffer = std::make_unique<char[]>(length + 1);
+
+    // Note that enif_get_atom writes the NULL byte at the end
+    if (!enif_get_atom(env, term, buffer.get(), length + 1, ERL_NIF_LATIN1)) {
+      throw std::invalid_argument("decode failed, expected an atom");
+    }
+
+    return Atom(std::string(buffer.get(), length));
+  }
+};
+
 template <typename T> struct Decoder<std::optional<T>> {
   static std::optional<T> decode(ErlNifEnv *env, const ERL_NIF_TERM &term) {
     char atom_string[4];
@@ -243,6 +285,29 @@ template <typename T> struct Decoder<std::optional<T>> {
     }
 
     return fine::decode<T>(env, term);
+  }
+};
+
+template <typename... Args> struct Decoder<std::variant<Args...>> {
+  static std::variant<Args...> decode(ErlNifEnv *env,
+                                      const ERL_NIF_TERM &term) {
+    return do_decode<Args...>(env, term);
+  }
+
+private:
+  template <typename T, typename... Rest>
+  static std::variant<Args...> do_decode(ErlNifEnv *env,
+                                         const ERL_NIF_TERM &term) {
+    try {
+      return fine::decode<T>(env, term);
+    } catch (std::invalid_argument) {
+      if constexpr (sizeof...(Rest) > 0) {
+        return do_decode<Rest...>(env, term);
+      } else {
+        throw std::invalid_argument(
+            "decode failed, none of the variant types could be decoded");
+      }
+    }
   }
 };
 
@@ -296,6 +361,37 @@ template <typename T> struct Decoder<std::vector<T>> {
 
     return vector;
   }
+};
+
+template <typename K, typename V> struct Decoder<std::map<K, V>> {
+  static std::map<K, V> decode(ErlNifEnv *env, const ERL_NIF_TERM &term) {
+    auto map = std::map<K, V>();
+
+    ERL_NIF_TERM key, value;
+    ErlNifMapIterator iter;
+    if (!enif_map_iterator_create(env, term, &iter,
+                                  ERL_NIF_MAP_ITERATOR_FIRST)) {
+      throw std::invalid_argument("decode failed, expeted a map");
+    }
+
+    // Define RAII cleanup for the iterator
+    auto cleanup = IterCleanup{env, iter};
+
+    while (enif_map_iterator_get_pair(env, &iter, &key, &value)) {
+      map[fine::decode<K>(env, key)] = fine::decode<V>(env, value);
+      enif_map_iterator_next(env, &iter);
+    }
+
+    return map;
+  }
+
+private:
+  struct IterCleanup {
+    ErlNifEnv *env;
+    ErlNifMapIterator iter;
+
+    ~IterCleanup() { enif_map_iterator_destroy(env, &iter); }
+  };
 };
 
 template <typename T> struct Decoder<ResourcePtr<T>> {
@@ -397,9 +493,9 @@ template <> struct Encoder<ErlNifPid> {
   }
 };
 
-template <> struct Encoder<std::nullopt_t> {
-  static ERL_NIF_TERM encode(ErlNifEnv *env, const std::nullopt_t &nullopt) {
-    return fine::encode(env, __private__::atoms::nil);
+template <> struct Encoder<ErlNifBinary> {
+  static ERL_NIF_TERM encode(ErlNifEnv *env, const ErlNifBinary &binary) {
+    return enif_make_binary(env, const_cast<ErlNifBinary *>(&binary));
   }
 };
 
@@ -408,7 +504,7 @@ template <> struct Encoder<std::string> {
     ERL_NIF_TERM term;
     auto data = enif_make_new_binary(env, string.length(), &term);
     if (data == nullptr) {
-      throw std::runtime_error("encode: failed to allocate new binary");
+      throw std::runtime_error("encode failed, failed to allocate new binary");
     }
     memcpy(data, string.data(), string.length());
     return term;
@@ -420,8 +516,14 @@ template <> struct Encoder<Atom> {
     if (atom.term) {
       return atom.term.value();
     } else {
-      return fine::__private__::make_atom(env, atom.name);
+      return fine::__private__::make_atom(env, atom.name.c_str());
     }
+  }
+};
+
+template <> struct Encoder<std::nullopt_t> {
+  static ERL_NIF_TERM encode(ErlNifEnv *env, const std::nullopt_t &nullopt) {
+    return fine::encode(env, __private__::atoms::nil);
   }
 };
 
@@ -431,46 +533,6 @@ template <typename T> struct Encoder<std::optional<T>> {
       return fine::encode(env, optional.value());
     } else {
       return fine::encode(env, __private__::atoms::nil);
-    }
-  }
-};
-
-template <typename... Args> struct Encoder<std::tuple<Args...>> {
-  static ERL_NIF_TERM encode(ErlNifEnv *env, const std::tuple<Args...> &tuple) {
-    return do_encode(env, tuple, std::make_index_sequence<sizeof...(Args)>());
-  }
-
-private:
-  template <std::size_t... Indices>
-  static ERL_NIF_TERM do_encode(ErlNifEnv *env,
-                                const std::tuple<Args...> &tuple,
-                                std::index_sequence<Indices...>) {
-    constexpr auto size = sizeof...(Args);
-    return enif_make_tuple(env, size,
-                           fine::encode(env, std::get<Indices>(tuple))...);
-  }
-};
-
-template <typename... Args> struct Encoder<Ok<Args...>> {
-  static ERL_NIF_TERM encode(ErlNifEnv *env, const Ok<Args...> &ok) {
-    auto tag = __private__::atoms::ok;
-
-    if constexpr (sizeof...(Args) > 0) {
-      return fine::encode(env, std::tuple_cat(std::tuple(tag), ok.items));
-    } else {
-      return fine::encode(env, tag);
-    }
-  }
-};
-
-template <typename... Args> struct Encoder<Error<Args...>> {
-  static ERL_NIF_TERM encode(ErlNifEnv *env, const Error<Args...> &error) {
-    auto tag = __private__::atoms::error;
-
-    if constexpr (sizeof...(Args) > 0) {
-      return fine::encode(env, std::tuple_cat(std::tuple(tag), error.items));
-    } else {
-      return fine::encode(env, tag);
     }
   }
 };
@@ -494,6 +556,56 @@ private:
     } else {
       throw std::runtime_error("unreachable");
     }
+  }
+};
+
+template <typename... Args> struct Encoder<std::tuple<Args...>> {
+  static ERL_NIF_TERM encode(ErlNifEnv *env, const std::tuple<Args...> &tuple) {
+    return do_encode(env, tuple, std::make_index_sequence<sizeof...(Args)>());
+  }
+
+private:
+  template <std::size_t... Indices>
+  static ERL_NIF_TERM do_encode(ErlNifEnv *env,
+                                const std::tuple<Args...> &tuple,
+                                std::index_sequence<Indices...>) {
+    constexpr auto size = sizeof...(Args);
+    return enif_make_tuple(env, size,
+                           fine::encode(env, std::get<Indices>(tuple))...);
+  }
+};
+
+template <typename T> struct Encoder<std::vector<T>> {
+  static ERL_NIF_TERM encode(ErlNifEnv *env, const std::vector<T> &vector) {
+    auto terms = std::vector<ERL_NIF_TERM>();
+    terms.reserve(vector.size());
+
+    for (const auto &item : vector) {
+      terms.push_back(fine::encode(env, item));
+    }
+
+    return enif_make_list_from_array(env, terms.data(),
+                                     static_cast<unsigned int>(terms.size()));
+  }
+};
+
+template <typename K, typename V> struct Encoder<std::map<K, V>> {
+  static ERL_NIF_TERM encode(ErlNifEnv *env, const std::map<K, V> &map) {
+    auto keys = std::vector<ERL_NIF_TERM>();
+    auto values = std::vector<ERL_NIF_TERM>();
+
+    for (const auto &[key, value] : map) {
+      keys.push_back(fine::encode(env, key));
+      values.push_back(fine::encode(env, value));
+    }
+
+    ERL_NIF_TERM map_term;
+    if (!enif_make_map_from_arrays(env, keys.data(), values.data(), keys.size(),
+                                   &map_term)) {
+      throw std::runtime_error("encode failed, failed to make a map");
+    }
+
+    return map_term;
   }
 };
 
@@ -531,7 +643,7 @@ struct Encoder<T, std::void_t<decltype(T::module), decltype(T::fields)>> {
     ERL_NIF_TERM map;
     if (!enif_make_map_from_arrays(env, keys, values,
                                    num_extra_fields + num_fields, &map)) {
-      throw std::runtime_error("encode: failed to make a map");
+      throw std::runtime_error("encode failed, failed to make a map");
     }
 
     return map;
@@ -568,6 +680,30 @@ private:
   template <typename U>
   struct has_is_exception<U, std::void_t<decltype(U::is_exception)>>
       : std::true_type {};
+};
+
+template <typename... Args> struct Encoder<Ok<Args...>> {
+  static ERL_NIF_TERM encode(ErlNifEnv *env, const Ok<Args...> &ok) {
+    auto tag = __private__::atoms::ok;
+
+    if constexpr (sizeof...(Args) > 0) {
+      return fine::encode(env, std::tuple_cat(std::tuple(tag), ok.items));
+    } else {
+      return fine::encode(env, tag);
+    }
+  }
+};
+
+template <typename... Args> struct Encoder<Error<Args...>> {
+  static ERL_NIF_TERM encode(ErlNifEnv *env, const Error<Args...> &error) {
+    auto tag = __private__::atoms::error;
+
+    if constexpr (sizeof...(Args) > 0) {
+      return fine::encode(env, std::tuple_cat(std::tuple(tag), error.items));
+    } else {
+      return fine::encode(env, tag);
+    }
+  }
 };
 
 namespace __private__ {
@@ -711,6 +847,13 @@ ResourcePtr<T> make_resource(Args &&...args) {
   return resource;
 }
 
+template <typename T>
+Term make_resource_binary(ErlNifEnv *env, ResourcePtr<T> resource,
+                          const char *data, size_t size) {
+  return enif_make_resource_binary(
+      env, reinterpret_cast<void *>(resource.get()), data, size);
+}
+
 class Registration {
   inline static std::vector<std::tuple<ErlNifResourceType **, const char *,
                                        void (*)(ErlNifEnv *, void *)>>
@@ -849,10 +992,18 @@ inline int load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info) {
       {#name, fine::nif_arity(name), name##_nif, flags});                      \
   static_assert(true, "require a semicolon after the macro")
 
+// Note that we use static, in case FINE_REASOURCE is used in another
+// translation unit on the same line
+
 #define FINE_RESOURCE(class_name)                                              \
-  auto __resource_registration_##class_name =                                  \
+  static auto __FINE_CONCAT__(__resource_registration_, __LINE__) =            \
       fine::Registration::register_resource<class_name>(#class_name);          \
   static_assert(true, "require a semicolon after the macro")
+
+// An extra level of indirection is necessary to make sure __LINE__
+// is expanded before concatenation
+#define __FINE_CONCAT__(a, b) __FINE_CONCAT_IMPL__(a, b)
+#define __FINE_CONCAT_IMPL__(a, b) a##b
 
 // This is a modified version of ERL_NIF_INIT that points to the
 // registered NIF functions and also sets the load callback.

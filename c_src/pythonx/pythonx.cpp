@@ -709,7 +709,7 @@ fine::Term format_exception(ErlNifEnv *env, ExError error) {
     auto py_line = PyList_GetItem(py_lines, i);
     raise_if_failed(env, py_line);
 
-    terms[i] = py_object_to_binary_term(env, py_line);
+    terms.push_back(py_object_to_binary_term(env, py_line));
   }
 
   return enif_make_list_from_array(env, terms.data(),
@@ -765,6 +765,7 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
 
     auto py_str = PyObject_Str(py_object);
     raise_if_failed(env, py_str);
+    auto py_str_guard = PyDecRefGuard(py_str);
 
     auto binary_term = py_object_to_binary_term(env, py_str);
 
@@ -801,7 +802,7 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
       raise_if_failed(env, py_item);
       Py_IncRef(py_item);
       auto ex_item = ExObject(fine::make_resource<ExObjectResource>(py_item));
-      terms[i] = fine::encode(env, ex_item);
+      terms.push_back(fine::encode(env, ex_item));
     }
 
     auto items = enif_make_list_from_array(env, terms.data(),
@@ -825,7 +826,7 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
       raise_if_failed(env, py_item);
       Py_IncRef(py_item);
       auto ex_item = ExObject(fine::make_resource<ExObjectResource>(py_item));
-      terms[i] = fine::encode(env, ex_item);
+      terms.push_back(fine::encode(env, ex_item));
     }
 
     auto items = enif_make_list_from_array(env, terms.data(),
@@ -847,8 +848,6 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
     PyObjectPtr py_key, py_value;
     Py_ssize_t pos = 0;
 
-    Py_ssize_t i = 0;
-
     while (PyDict_Next(py_object, &pos, &py_key, &py_value)) {
       Py_IncRef(py_key);
       auto ex_key = ExObject(fine::make_resource<ExObjectResource>(py_key));
@@ -856,8 +855,7 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
       Py_IncRef(py_value);
       auto ex_value = ExObject(fine::make_resource<ExObjectResource>(py_value));
 
-      terms[i] = fine::encode(env, std::make_tuple(ex_key, ex_value));
-      i++;
+      terms.push_back(fine::encode(env, std::make_tuple(ex_key, ex_value)));
     }
 
     auto items = enif_make_list_from_array(env, terms.data(),
@@ -910,13 +908,11 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
     auto py_iter_guard = PyDecRefGuard(py_iter);
 
     PyObjectPtr py_item = NULL;
-    Py_ssize_t i = 0;
 
     while ((py_item = PyIter_Next(py_iter)) != NULL) {
       // Note that PyIter_Next already returns a new reference
       auto ex_item = ExObject(fine::make_resource<ExObjectResource>(py_item));
-      terms[i] = fine::encode(env, ex_item);
-      i++;
+      terms.push_back(fine::encode(env, ex_item));
     }
 
     if (PyErr_Occurred() != NULL) {

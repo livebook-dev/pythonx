@@ -70,6 +70,30 @@ auto term = fine::encode(env, message);
 auto message = fine::decode<std::string>(env, term);
 ```
 
+Fine provides implementations for the following types:
+
+| Type                                 | Encoder | Decoder |
+| ------------------------------------ | ------- | ------- |
+| `fine::Term`                         | x       | x       |
+| `int64_t`                            | x       | x       |
+| `uint64_t`                           | x       | x       |
+| `double`                             | x       | x       |
+| `bool`                               | x       | x       |
+| `ErlNifPid`                          | x       | x       |
+| `ErlNifBinary`                       | x       | x       |
+| `std::string`                        | x       | x       |
+| `fine::Atom`                         | x       | x       |
+| `std::nullopt_t`                     | x       |         |
+| `std::optional<T>`                   | x       | x       |
+| `std::variant<Args...>`              | x       | x       |
+| `std::tuple<Args...>`                | x       | x       |
+| `std::vector<T>`                     | x       | x       |
+| `std::map<K, V>`                     | x       | x       |
+| `fine::ResourcePtr<T>`               | x       | x       |
+| `T` with [struct metadata](#structs) | x       | x       |
+| `fine::Ok<Args...>`                  | x       |         |
+| `fine::Error<Args...>`               | x       |         |
+
 You can extend encoding/decoding to work on custom types by defining
 the following specializations:
 
@@ -101,6 +125,39 @@ namespace fine {
 > conversion to and from `ERL_NIF_TERM`, so it can be used with all
 > `enif_*` functions with no changes.
 
+> #### Binaries {: .info}
+>
+> `std::string` is just a sequence of `char`s and therefore it makes
+> for a good counterpart for Elixir binaries, regardless if we are
+> talking about UTF-8 encoded strings or arbitrary binaries.
+>
+> However, when dealing with large binaries, it is preferable for the
+> NIF to accept `ErlNifBinary` as arguments and deal with the raw data
+> explicitly, which is zero-copy. That said, keep in mind that `ErlNifBinary`
+> is read-only and only valid during the NIF call lifetime.
+>
+> Similarly, when returning large binaries, prefer creating the term
+> with `enif_make_new_binary` and returning `fine::Term`, as shown below.
+>
+> ```cpp
+> fine::Term read_data(ErlNifEnv *env) {
+>   const char *buffer = ...;
+>   uint64_t size = ...;
+>
+>   ERL_NIF_TERM binary_term;
+>   auto binary_data = enif_make_new_binary(env, size, &binary_term);
+>   memcpy(binary_data, buffer, size);
+>
+>   return binary_term;
+> }
+> ```
+>
+> You can also return `ErlNifBinary` allocated with `enif_alloc_binary`,
+> but keep in mind that returning the binary converts it to term, which
+> in turn transfers the ownership, so you should not use that `ErlNifBinary`
+> after the NIF finishes.
+
+
 ### Resource objects
 
 Resource objects is a mechanism for passing pointers to C++ data
@@ -116,7 +173,7 @@ automatically decoded and encoded as a reference term. It can also be
 passed around C++ code, automatically managing the reference count.
 
 You need to indicate that a given class can be used as a resource type
-via the `FINE_RESOURCE` macro.;
+via the `FINE_RESOURCE` macro.
 
 ```cpp
 #include <fine.hpp>
@@ -170,6 +227,9 @@ add callbacks such as `destructor` to the implementation. If you run
 into any of these limitations, you can define your own wrapper class,
 holding an object of the third-party class and implementing the desired
 construction/destruction on top.
+
+You can use `fine::make_resource_binary<T>(ErlNifEnv *env, ResourcePtr<T> resource, const char *data, size_t size)`
+to create a binary term with memory managed by the resource.
 
 ### Structs
 
