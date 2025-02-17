@@ -16,23 +16,20 @@
 
 namespace fine {
 
-// Declarations needed upfront
-
-template <typename T> class ResourcePtr;
-
-template <typename T, typename SFINAE = void> struct Decoder;
-template <typename T, typename SFINAE = void> struct Encoder;
+// Forward declarations
 
 template <typename T> T decode(ErlNifEnv *env, const ERL_NIF_TERM &term);
 template <typename T> ERL_NIF_TERM encode(ErlNifEnv *env, const T &value);
 
+template <typename T, typename SFINAE = void> struct Decoder;
+template <typename T, typename SFINAE = void> struct Encoder;
+
 namespace __private__ {
-template <typename T> struct ResourceWrapper;
 std::vector<ErlNifFunc> &get_erl_nif_funcs();
 int load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info);
 } // namespace __private__
 
-// Extra utilities
+// Definitions
 
 namespace __private__ {
 inline ERL_NIF_TERM make_atom(ErlNifEnv *env, const char *msg) {
@@ -45,15 +42,8 @@ inline ERL_NIF_TERM make_atom(ErlNifEnv *env, const char *msg) {
 }
 } // namespace __private__
 
+// A representation of an atom term.
 class Atom {
-  // We accumulate all globally defined atom objects and create the
-  // terms upfront as part of init (called from the NIF load callback)
-  inline static std::vector<Atom *> atoms = {};
-  inline static bool initialized = false;
-
-  std::string name;
-  std::optional<ERL_NIF_UINT> term;
-
 public:
   Atom(std::string name) : name(name), term(std::nullopt) {
     if (!Atom::initialized) {
@@ -83,6 +73,14 @@ private:
 
   friend int __private__::load(ErlNifEnv *env, void **priv_data,
                                ERL_NIF_TERM load_info);
+
+  // We accumulate all globally defined atom objects and create the
+  // terms upfront as part of init (called from the NIF load callback).
+  inline static std::vector<Atom *> atoms = {};
+  inline static bool initialized = false;
+
+  std::string name;
+  std::optional<ERL_NIF_UINT> term;
 };
 
 namespace __private__::atoms {
@@ -98,28 +96,10 @@ inline auto ElixirArgumentError = Atom("Elixir.ArgumentError");
 inline auto ElixirRuntimeError = Atom("Elixir.RuntimeError");
 } // namespace __private__::atoms
 
-// Result tagged tuples
-
-template <typename... Args> class Ok {
-  std::tuple<Args...> items;
-
-public:
-  Ok(const Args &...items) : items(items...) {}
-
-  friend struct Encoder<Ok<Args...>>;
-};
-
-template <typename... Args> class Error {
-  std::tuple<Args...> items;
-
-public:
-  Error(const Args &...items) : items(items...) {}
-
-  friend struct Encoder<Error<Args...>>;
-};
-
-// Term
-
+// Represents any term.
+//
+// This type should be used instead of ERL_NIF_TERM in the NIF signature
+// and encode/decode APIs.
 class Term {
   // ERL_NIF_TERM is typedef-ed as an integer type. At the moment of
   // writing it is unsigned long int. This means that we cannot define
@@ -131,15 +111,174 @@ class Term {
   // Term is effectively just a typing tag for decoder and encoder
   // (and the nif signature).
 
-  ERL_NIF_TERM term;
-
 public:
   Term(const ERL_NIF_TERM &term) : term(term) {}
 
   operator ERL_NIF_TERM() const { return this->term; }
+
+private:
+  ERL_NIF_TERM term;
 };
 
-// Decoding and encoding
+// Represents a `:ok` tagged tuple, useful as a NIF result.
+template <typename... Args> class Ok {
+public:
+  Ok(const Args &...items) : items(items...) {}
+
+private:
+  friend struct Encoder<Ok<Args...>>;
+
+  std::tuple<Args...> items;
+};
+
+// Represents a `:error` tagged tuple, useful as a NIF result.
+template <typename... Args> class Error {
+public:
+  Error(const Args &...items) : items(items...) {}
+
+private:
+  friend struct Encoder<Error<Args...>>;
+
+  std::tuple<Args...> items;
+};
+
+namespace __private__ {
+template <typename T> struct ResourceWrapper {
+  T resource;
+  bool initialized;
+
+  static void dtor(ErlNifEnv *env, void *ptr) {
+    auto resource_wrapper = reinterpret_cast<ResourceWrapper<T> *>(ptr);
+
+    if (resource_wrapper->initialized) {
+      if constexpr (has_destructor<T>::value) {
+        resource_wrapper->resource.destructor(env);
+      }
+      resource_wrapper->resource.~T();
+    }
+  }
+
+  template <typename U, typename = void>
+  struct has_destructor : std::false_type {};
+
+  template <typename U>
+  struct has_destructor<
+      U,
+      typename std::enable_if<std::is_same<
+          decltype(std::declval<U>().destructor(std::declval<ErlNifEnv *>())),
+          void>::value>::type> : std::true_type {};
+};
+} // namespace __private__
+
+// A smart pointer that retains ownership of a resource object.
+template <typename T> class ResourcePtr {
+  // For more context see [1] and [2].
+  //
+  // [1]: https://stackoverflow.com/a/3279550
+  // [2]: https://stackoverflow.com/a/5695855
+
+public:
+  // Make default constructor public, so that classes with ResourcePtr
+  // field can also have default constructor.
+  ResourcePtr() : ptr(nullptr) {}
+
+  ResourcePtr(const ResourcePtr<T> &other) : ptr(other.ptr) {
+    if (this->ptr != nullptr) {
+      enif_keep_resource(reinterpret_cast<void *>(this->ptr));
+    }
+  }
+
+  ResourcePtr(ResourcePtr<T> &&other) : ResourcePtr() { swap(other, *this); }
+
+  ~ResourcePtr() {
+    if (this->ptr != nullptr) {
+      enif_release_resource(reinterpret_cast<void *>(this->ptr));
+    }
+  }
+
+  ResourcePtr<T> &operator=(ResourcePtr<T> other) {
+    swap(*this, other);
+    return *this;
+  }
+
+  T &operator*() const { return this->ptr->resource; }
+
+  T *operator->() const { return &this->ptr->resource; }
+
+  T *get() const { return &this->ptr->resource; }
+
+  friend void swap(ResourcePtr<T> &left, ResourcePtr<T> &right) {
+    using std::swap;
+    swap(left.ptr, right.ptr);
+  }
+
+private:
+  // This constructor assumes the pointer is already accounted for in
+  // the resource reference count. Since it is private, we guarantee
+  // this in all the callers.
+  ResourcePtr(__private__::ResourceWrapper<T> *ptr) : ptr(ptr) {}
+
+  // Friend functions that use the resource_type static member or the
+  // private constructor.
+
+  template <typename U, typename... Args>
+  friend ResourcePtr<U> make_resource(Args &&...args);
+
+  friend class Registration;
+
+  friend struct Decoder<ResourcePtr<T>>;
+
+  inline static ErlNifResourceType *resource_type = nullptr;
+
+  __private__::ResourceWrapper<T> *ptr;
+};
+
+// Allocates a new resource object, invoking its constructor with the
+// given arguments.
+template <typename T, typename... Args>
+ResourcePtr<T> make_resource(Args &&...args) {
+  auto type = ResourcePtr<T>::resource_type;
+
+  if (type == nullptr) {
+    throw std::runtime_error(
+        "calling make_resource with unexpected type. Make sure"
+        " to register your resource type with the FINE_RESOURCE macro");
+  }
+
+  void *allocation_ptr =
+      enif_alloc_resource(type, sizeof(__private__::ResourceWrapper<T>));
+
+  auto resource_wrapper =
+      reinterpret_cast<__private__::ResourceWrapper<T> *>(allocation_ptr);
+
+  // We create ResourcePtr right away, to make sure the resource is
+  // properly released in case the constructor below throws
+  auto resource = ResourcePtr<T>(resource_wrapper);
+
+  // We use a wrapper struct with an extra field to track if the
+  // resource has actually been initialized. This way if the constructor
+  // below throws, we can skip the destructor calls in the Erlang dtor
+  resource_wrapper->initialized = false;
+
+  // Invoke the constructor with prefect forwarding to initialize the
+  // object at the VM-allocated memory
+  new (&resource_wrapper->resource) T(std::forward<Args>(args)...);
+
+  resource_wrapper->initialized = true;
+
+  return resource;
+}
+
+// Creates a binary term pointing to the given buffer.
+//
+// The buffer is managed by the resource object and should be deallocated
+// once the resource is destroyed.
+template <typename T>
+Term make_resource_binary(ErlNifEnv *env, ResourcePtr<T> resource,
+                          const char *data, size_t size) {
+  return enif_make_resource_binary(
+      env, reinterpret_cast<void *>(resource.get()), data, size);
+}
 
 // Decodes the given Erlang term as a value of the specified type.
 //
@@ -716,151 +855,14 @@ public:
 };
 } // namespace __private__
 
+// Raises an Elixir exception with the given value as reason.
 template <typename T> void raise(ErlNifEnv *env, const T &value) {
   auto term = encode(env, value);
   throw __private__::ExceptionError(term);
 }
 
-// Resource
-
-namespace __private__ {
-template <typename T> struct ResourceWrapper {
-  T resource;
-  bool initialized;
-
-  static void dtor(ErlNifEnv *env, void *ptr) {
-    auto resource_wrapper = reinterpret_cast<ResourceWrapper<T> *>(ptr);
-
-    if (resource_wrapper->initialized) {
-      if constexpr (has_destructor<T>::value) {
-        resource_wrapper->resource.destructor(env);
-      }
-      resource_wrapper->resource.~T();
-    }
-  }
-
-  template <typename U, typename = void>
-  struct has_destructor : std::false_type {};
-
-  template <typename U>
-  struct has_destructor<
-      U,
-      typename std::enable_if<std::is_same<
-          decltype(std::declval<U>().destructor(std::declval<ErlNifEnv *>())),
-          void>::value>::type> : std::true_type {};
-};
-} // namespace __private__
-
-template <typename T> class ResourcePtr {
-  // For more context see [1] and [2].
-  //
-  // [1]: https://stackoverflow.com/a/3279550
-  // [2]: https://stackoverflow.com/a/5695855
-
-private:
-  inline static ErlNifResourceType *resource_type = nullptr;
-
-  __private__::ResourceWrapper<T> *ptr;
-
-  // This constructor assumes the pointer is already accounted for in
-  // the resource reference count. Since it is private, we guarantee
-  // this in all the callers.
-  ResourcePtr(__private__::ResourceWrapper<T> *ptr) : ptr(ptr) {}
-
-public:
-  // Make default constructor public, so that classes with ResourcePtr
-  // field can also have default constructor.
-  ResourcePtr() : ptr(nullptr) {}
-
-  ResourcePtr(const ResourcePtr<T> &other) : ptr(other.ptr) {
-    if (this->ptr != nullptr) {
-      enif_keep_resource(reinterpret_cast<void *>(this->ptr));
-    }
-  }
-
-  ResourcePtr(ResourcePtr<T> &&other) : ResourcePtr() { swap(other, *this); }
-
-  ~ResourcePtr() {
-    if (this->ptr != nullptr) {
-      enif_release_resource(reinterpret_cast<void *>(this->ptr));
-    }
-  }
-
-  ResourcePtr<T> &operator=(ResourcePtr<T> other) {
-    swap(*this, other);
-    return *this;
-  }
-
-  T &operator*() const { return this->ptr->resource; }
-
-  T *operator->() const { return &this->ptr->resource; }
-
-  T *get() const { return &this->ptr->resource; }
-
-  friend void swap(ResourcePtr<T> &left, ResourcePtr<T> &right) {
-    using std::swap;
-    swap(left.ptr, right.ptr);
-  }
-
-  // Friend functions that use the resource_type static member or the
-  // private constructor
-
-  template <typename U, typename... Args>
-  friend ResourcePtr<U> make_resource(Args &&...args);
-
-  friend class Registration;
-
-  friend struct Decoder<ResourcePtr<T>>;
-};
-
-template <typename T, typename... Args>
-ResourcePtr<T> make_resource(Args &&...args) {
-  auto type = ResourcePtr<T>::resource_type;
-
-  if (type == nullptr) {
-    throw std::runtime_error(
-        "calling make_resource with unexpected type. Make sure"
-        " to register your resource type with the FINE_RESOURCE macro");
-  }
-
-  void *allocation_ptr =
-      enif_alloc_resource(type, sizeof(__private__::ResourceWrapper<T>));
-
-  auto resource_wrapper =
-      reinterpret_cast<__private__::ResourceWrapper<T> *>(allocation_ptr);
-
-  // We create ResourcePtr right away, to make sure the resource is
-  // properly released in case the constructor below throws
-  auto resource = ResourcePtr<T>(resource_wrapper);
-
-  // We use a wrapper struct with an extra field to track if the
-  // resource has actually been initialized. This way if the constructor
-  // below throws, we can skip the destructor calls in the Erlang dtor
-  resource_wrapper->initialized = false;
-
-  // Invoke the constructor with prefect forwarding to initialize the
-  // object at the VM-allocated memory
-  new (&resource_wrapper->resource) T(std::forward<Args>(args)...);
-
-  resource_wrapper->initialized = true;
-
-  return resource;
-}
-
-template <typename T>
-Term make_resource_binary(ErlNifEnv *env, ResourcePtr<T> resource,
-                          const char *data, size_t size) {
-  return enif_make_resource_binary(
-      env, reinterpret_cast<void *>(resource.get()), data, size);
-}
-
+// Mechanism for accumulating information via static object definitions.
 class Registration {
-  inline static std::vector<std::tuple<ErlNifResourceType **, const char *,
-                                       void (*)(ErlNifEnv *, void *)>>
-      resources = {};
-
-  inline static std::vector<ErlNifFunc> erl_nif_funcs = {};
-
 public:
   template <typename T>
   static Registration register_resource(const char *name) {
@@ -898,13 +900,13 @@ private:
 
   friend int __private__::load(ErlNifEnv *env, void **priv_data,
                                ERL_NIF_TERM load_info);
-};
 
-namespace __private__ {
-inline std::vector<ErlNifFunc> &get_erl_nif_funcs() {
-  return Registration::erl_nif_funcs;
-}
-} // namespace __private__
+  inline static std::vector<std::tuple<ErlNifResourceType **, const char *,
+                                       void (*)(ErlNifEnv *, void *)>>
+      resources = {};
+
+  inline static std::vector<ErlNifFunc> erl_nif_funcs = {};
+};
 
 // NIF definitions
 
@@ -945,7 +947,7 @@ ERL_NIF_TERM nif_impl(ErlNifEnv *env, const ERL_NIF_TERM argv[],
                                     error.what());
   } catch (...) {
     return raise_error_with_message(env, __private__::atoms::ElixirRuntimeError,
-                                    "unknown exception");
+                                    "unknown exception thrown within NIF");
   }
 }
 } // namespace __private__
@@ -970,6 +972,10 @@ constexpr unsigned int nif_arity(Ret (*)(Args...)) {
 }
 
 namespace __private__ {
+inline std::vector<ErlNifFunc> &get_erl_nif_funcs() {
+  return Registration::erl_nif_funcs;
+}
+
 inline int load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info) {
   Atom::init_atoms(env);
 
@@ -993,7 +999,7 @@ inline int load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info) {
   static_assert(true, "require a semicolon after the macro")
 
 // Note that we use static, in case FINE_REASOURCE is used in another
-// translation unit on the same line
+// translation unit on the same line.
 
 #define FINE_RESOURCE(class_name)                                              \
   static auto __FINE_CONCAT__(__resource_registration_, __LINE__) =            \
@@ -1001,12 +1007,13 @@ inline int load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info) {
   static_assert(true, "require a semicolon after the macro")
 
 // An extra level of indirection is necessary to make sure __LINE__
-// is expanded before concatenation
+// is expanded before concatenation.
 #define __FINE_CONCAT__(a, b) __FINE_CONCAT_IMPL__(a, b)
 #define __FINE_CONCAT_IMPL__(a, b) a##b
 
 // This is a modified version of ERL_NIF_INIT that points to the
 // registered NIF functions and also sets the load callback.
+
 #define FINE_INIT(name)                                                        \
   ERL_NIF_INIT_PROLOGUE                                                        \
   ERL_NIF_INIT_GLOB                                                            \

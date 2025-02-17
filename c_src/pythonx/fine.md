@@ -170,7 +170,8 @@ C++ standard library. This function creates a new object of the type
 `T`, invoking its constructor with the given arguments and it returns
 a smart pointer of type `fine::ResourcePtr<T>`. The pointer is
 automatically decoded and encoded as a reference term. It can also be
-passed around C++ code, automatically managing the reference count.
+passed around C++ code, automatically managing the reference count
+(similarly to `std::shared_ptr`).
 
 You need to indicate that a given class can be used as a resource type
 via the `FINE_RESOURCE` macro.
@@ -228,7 +229,7 @@ into any of these limitations, you can define your own wrapper class,
 holding an object of the third-party class and implementing the desired
 construction/destruction on top.
 
-You can use `fine::make_resource_binary<T>(ErlNifEnv *env, ResourcePtr<T> resource, const char *data, size_t size)`
+You can use `fine::make_resource_binary(env, resource, data, size)`
 to create a binary term with memory managed by the resource.
 
 ### Structs
