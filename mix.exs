@@ -39,7 +39,7 @@ defmodule Pythonx.MixProject do
 
   defp deps do
     [
-      {:fine, github: "elixir-nx/fine", runtime: false},
+      {:fine, "~> 0.1.0", runtime: false},
       {:elixir_make, "~> 0.9", runtime: false},
       {:cc_precompiler, "~> 0.1", runtime: false},
       {:ex_doc, "~> 0.36", only: :dev, runtime: false}
