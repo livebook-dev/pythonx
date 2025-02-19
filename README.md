@@ -31,7 +31,7 @@ Add Pythonx to your dependencies:
 
 ```elixir
 Mix.install([
-  {:pythonx, github: "livebook-dev/pythonx"}
+  {:pythonx, "~> 0.3.0"}
 ])
 ```
 
@@ -107,7 +107,7 @@ Add Pythonx to your dependencies:
 ```elixir
 def deps do
   [
-    {:pythonx, github: "livebook-dev/pythonx"}
+    {:pythonx, "~> 0.3.0"}
   ]
 end
 ```
