@@ -21,6 +21,7 @@ defmodule Pythonx.MixProject do
       compilers: [:elixir_make] ++ Mix.compilers(),
       docs: docs(),
       package: package(),
+      make_env: fn -> %{"FINE_INCLUDE_DIR" => Fine.include_dir()} end,
       # Precompilation
       make_precompiler: {:nif, CCPrecompiler},
       make_precompiler_url: "#{@github_url}/releases/download/v#{@version}/@{artefact_filename}",
@@ -38,6 +39,7 @@ defmodule Pythonx.MixProject do
 
   defp deps do
     [
+      {:fine, github: "elixir-nx/fine", runtime: false},
       {:elixir_make, "~> 0.9", runtime: false},
       {:cc_precompiler, "~> 0.1", runtime: false},
       {:ex_doc, "~> 0.36", only: :dev, runtime: false}
@@ -46,7 +48,9 @@ defmodule Pythonx.MixProject do
 
   defp docs() do
     [
-      main: "Pythonx"
+      main: "Pythonx",
+      source_url: @github_url,
+      source_ref: "v#{@version}"
     ]
   end
 

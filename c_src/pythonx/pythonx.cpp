@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <erl_nif.h>
+#include <fine.hpp>
 #include <iostream>
 #include <map>
 #include <mutex>
@@ -9,7 +10,6 @@
 #include <thread>
 #include <tuple>
 
-#include "fine.hpp"
 #include "python.hpp"
 
 extern "C" void pythonx_handle_io_write(const char *message,

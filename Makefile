@@ -3,7 +3,7 @@ NIF_PATH = $(PRIV_DIR)/libpythonx.so
 
 C_SRC = $(shell pwd)/c_src/pythonx
 CPPFLAGS = -shared -fPIC -std=c++17 -Wall -Wextra -Wno-unused-parameter -Wno-comment
-CPPFLAGS += -I$(ERTS_INCLUDE_DIR)
+CPPFLAGS += -I$(ERTS_INCLUDE_DIR) -I$(FINE_INCLUDE_DIR)
 
 ifdef DEBUG
 	CPPFLAGS += -g
