@@ -5,7 +5,7 @@ end
 defmodule Pythonx.MixProject do
   use Mix.Project
 
-  @version "0.3.0"
+  @version "0.3.1-dev"
   @description "Python interpreter embedded in Elixir"
   @github_url "https://github.com/livebook-dev/pythonx"
 
