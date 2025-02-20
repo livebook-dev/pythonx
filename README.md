@@ -13,7 +13,7 @@ convert between Python and Elixir data structures.
 
 The goal of this project is to better integrate Python workflows within
 Livebook and its usage in actual projects must be done with care due to
-Python's global interpreter lock (GIL), which prevents from multiple threads
+Python's global interpreter lock (GIL), which prevents multiple threads from
 executing Python code at the same time. Consequently, calling `Pythonx`
 from multiple Elixir processes does not provide the concurrency you might
 expect and thus it can be a source of bottlenecks. However, this concerns
@@ -22,7 +22,7 @@ have native implementation of many functions and invoking those releases the
 GIL. GIL is also released when waiting on I/O operations. In other words,
 if you are using this library to integrate with Python, make sure it happens
 in a single Elixir process or that its underlying libraries can deal with
-concurrent invocation. Otherwqise, prefer to use Elixir's `System.cmd/3` or
+concurrent invocation. Otherwise, prefer to use Elixir's `System.cmd/3` or
 `Port`s to manage multiple Python programs via I/O.
 
 ## Usage (script)
@@ -148,7 +148,7 @@ executable that runs Python code, and that is the usual interface
 that developers use to interact with the interpreter. However, most
 the CPython functionality is also available as a dynamically linked
 library (`.so`, `.dylib` or `.dll`, depending on the platform). The
-`python` executable can be though of as a program build on top of
+`python` executable can be thought of as a program build on top of
 that library.
 
 With this design, any C/C++ application can link the Python library
