@@ -31,7 +31,7 @@ Add Pythonx to your dependencies:
 
 ```elixir
 Mix.install([
-  {:pythonx, "~> 0.3.0"}
+  {:pythonx, "~> 0.4.0"}
 ])
 ```
 
@@ -107,7 +107,7 @@ Add Pythonx to your dependencies:
 ```elixir
 def deps do
   [
-    {:pythonx, "~> 0.3.0"}
+    {:pythonx, "~> 0.4.0"}
   ]
 end
 ```
