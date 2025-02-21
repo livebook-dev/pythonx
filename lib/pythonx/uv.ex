@@ -106,12 +106,19 @@ defmodule Pythonx.Uv do
 
         python_home_path = make_windows_slashes(root_dir)
 
+        python_executable_path =
+          abs_executable_dir
+          |> Path.join("python.exe")
+          |> make_windows_slashes()
+
         venv_packages_path =
           project_dir
           |> Path.join(".venv/Lib/site-packages")
           |> make_windows_slashes()
 
-        Pythonx.init(python_dl_path, python_home_path, sys_paths: [venv_packages_path])
+        Pythonx.init(python_dl_path, python_home_path, python_executable_path,
+          sys_paths: [venv_packages_path]
+        )
 
       {:unix, osname} ->
         dl_extension =
@@ -128,12 +135,16 @@ defmodule Pythonx.Uv do
 
         python_home_path = root_dir
 
+        python_executable_path = Path.join(abs_executable_dir, "python")
+
         venv_packages_path =
           project_dir
           |> Path.join(".venv/lib/python3*/site-packages")
           |> wildcard_one!()
 
-        Pythonx.init(python_dl_path, python_home_path, sys_paths: [venv_packages_path])
+        Pythonx.init(python_dl_path, python_home_path, python_executable_path,
+          sys_paths: [venv_packages_path]
+        )
     end
   end
 

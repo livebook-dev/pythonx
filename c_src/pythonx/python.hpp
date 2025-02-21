@@ -131,6 +131,7 @@ extern int (*Py_IsFalse)(PyObjectPtr);
 extern int (*Py_IsNone)(PyObjectPtr);
 extern int (*Py_IsTrue)(PyObjectPtr);
 extern void (*Py_SetPythonHome)(const wchar_t *);
+extern void (*Py_SetProgramName)(const wchar_t *);
 
 // Opens Python dynamic library at the given path and looks up all
 // relevant symbols.

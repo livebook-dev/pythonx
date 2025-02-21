@@ -23,6 +23,7 @@ using namespace python;
 std::mutex init_mutex;
 bool is_initialized = false;
 std::wstring python_home_path_w;
+std::wstring python_executable_path_w;
 std::map<std::string, std::tuple<PyObjectPtr, PyObjectPtr>> compilation_cache;
 std::mutex compilation_cache_mutex;
 
@@ -225,6 +226,7 @@ ERL_NIF_TERM py_object_to_binary_term(ErlNifEnv *env, PyObjectPtr py_object) {
 
 fine::Ok<> init(ErlNifEnv *env, std::string python_dl_path,
                 ErlNifBinary python_home_path,
+                ErlNifBinary python_executable_path,
                 std::vector<ErlNifBinary> sys_paths) {
   auto init_guard = std::lock_guard<std::mutex>(init_mutex);
 
@@ -240,24 +242,36 @@ fine::Ok<> init(ErlNifEnv *env, std::string python_dl_path,
   python_home_path_w = std::wstring(
       python_home_path.data, python_home_path.data + python_home_path.size);
 
-  // As part of the initialization, sys.path is set. It is important
+  python_executable_path_w =
+      std::wstring(python_executable_path.data,
+                   python_executable_path.data + python_executable_path.size);
+
+  // As part of the initialization, sys.path gets set. It is important
   // that it gets set correctly, so that the built-in modules can be
   // found, otherwise the initialization fails. This logic is internal
   // to Python, but we can configure base paths used to infer sys.path.
-  // The Limited API exposes Py_SetPythonHome and Py_SetProgramName.
-  // Technically we could use either of them, while Py_SetProgramName
-  // has the advantage that, when set to the executable inside venv,
-  // it results in the packages directory being added to sys.path
-  // automatically. However, when testing Py_SetProgramName did not
-  // work as expected in Python 3.10 on Windows. For this reason we
-  // use Py_SetPythonHome, which seems more reliable, and add other
-  // paths to sys.path manually.
+  // The Limited API exposes Py_SetPythonHome and Py_SetProgramName and
+  // it appears that setting either of them alone should be sufficient.
+  //
+  // Py_SetProgramName has the advantage that, when set to the executable
+  // inside venv, it results in the packages directory being added to
+  // sys.path automatically, however, when tested, this did not work
+  // as expected in Python 3.10 on Windows. For this reason we prefer
+  // to use Py_SetPythonHome and add other paths to sys.path manually.
+  //
+  // Even then, we still want to set Py_SetProgramName to a Python
+  // executable, otherwise `sys.executable` is going to point to the
+  // BEAM executable (`argv[0]`), which can be problematic.
+  //
+  // In the end, the most reliable combination seems to be to set both,
+  // and also add the extra sys.path manually.
   //
   // Note that Python home is the directory with lib/ child directory
   // containing the built-in Python modules [1].
   //
   // [1]: https://docs.python.org/3/using/cmdline.html#envvar-PYTHONHOME
   Py_SetPythonHome(python_home_path_w.c_str());
+  Py_SetProgramName(python_executable_path_w.c_str());
 
   Py_InitializeEx(0);
 
