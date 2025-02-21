@@ -77,6 +77,7 @@ DEF_SYMBOL(Py_IsFalse)
 DEF_SYMBOL(Py_IsNone)
 DEF_SYMBOL(Py_IsTrue)
 DEF_SYMBOL(Py_SetPythonHome)
+DEF_SYMBOL(Py_SetProgramName)
 
 dl::LibraryHandle python_library;
 
@@ -150,6 +151,7 @@ void load_python_library(std::string path) {
   LOAD_SYMBOL(python_library, Py_IsNone)
   LOAD_SYMBOL(python_library, Py_IsTrue)
   LOAD_SYMBOL(python_library, Py_SetPythonHome)
+  LOAD_SYMBOL(python_library, Py_SetProgramName)
 }
 
 void unload_python_library() {

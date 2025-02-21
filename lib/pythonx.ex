@@ -12,47 +12,6 @@ defmodule Pythonx do
 
   @type encoder :: (term(), encoder() -> Object.t())
 
-  @doc """
-  Initializes the Python interpreter.
-
-  > #### Reproducability {: .info}
-  >
-  > This function can be called to use a custom Python installation,
-  > however in most cases it is more convenient to call `uv_init/2`,
-  > which installs Python and dependencies, and then automatically
-  > initializes the interpreter using the correct paths.
-
-  The `python_dl_path` argument is the Python dynamically linked
-  library file. The usual file name is `libpython3.x.so` (Linux),
-  `libpython3.x.dylib` (macOS), `python3x.dll` (Windows).
-
-  The `python_home_path` is the Python home directory, where the Python
-  built-in modules reside. Specifically, the modules should be located
-  in `{python_home_path}/lib/pythonx.y` (Linux and macOS) or
-  `{python_home_path}/Lib` (Windows).
-
-  ## Options
-
-    * `:sys_paths` - directories to be added to the module search path
-      (`sys.path`). Defaults to `[]`.
-
-  """
-  @spec init(String.t(), String.t(), keyword()) :: :ok
-  def init(python_dl_path, python_home_path, opts \\ [])
-      when is_binary(python_dl_path) and is_binary(python_home_path) and is_list(opts) do
-    opts = Keyword.validate!(opts, sys_paths: [])
-
-    if not File.exists?(python_dl_path) do
-      raise ArgumentError, "the given dynamic library file does not exist: #{python_dl_path}"
-    end
-
-    if not File.dir?(python_home_path) do
-      raise ArgumentError, "the given python home directory does not exist: #{python_home_path}"
-    end
-
-    Pythonx.NIF.init(python_dl_path, python_home_path, opts[:sys_paths])
-  end
-
   @doc ~S'''
   Installs Python and dependencies using [uv](https://docs.astral.sh/uv)
   package manager and initializes the interpreter.
@@ -97,6 +56,53 @@ defmodule Pythonx do
 
     Pythonx.Uv.fetch(pyproject_toml, false, opts)
     Pythonx.Uv.init(pyproject_toml, false)
+  end
+
+  # Initializes the Python interpreter.
+  #
+  # > #### Reproducability {: .info}
+  # >
+  # > This function can be called to use a custom Python installation,
+  # > however in most cases it is more convenient to call `uv_init/2`,
+  # > which installs Python and dependencies, and then automatically
+  # > initializes the interpreter using the correct paths.
+  #
+  # `python_dl_path` is the Python dynamically linked library file.
+  # The usual file name is `libpython3.x.so` (Linux), `libpython3.x.dylib`
+  # (macOS), `python3x.dll` (Windows).
+  #
+  # `python_home_path` is the Python home directory, where the Python
+  # built-in modules reside. Specifically, the modules should be
+  # located in `{python_home_path}/lib/pythonx.y` (Linux and macOS)
+  # or `{python_home_path}/Lib` (Windows).
+  #
+  # `python_executable_path` is the Python executable file.
+  #
+  # ## Options
+  #
+  #   * `:sys_paths` - directories to be added to the module search path
+  #     (`sys.path`). Defaults to `[]`.
+  #
+  @doc false
+  @spec init(String.t(), String.t(), keyword()) :: :ok
+  def init(python_dl_path, python_home_path, python_executable_path, opts \\ [])
+      when is_binary(python_dl_path) and is_binary(python_home_path)
+      when is_binary(python_executable_path) and is_list(opts) do
+    opts = Keyword.validate!(opts, sys_paths: [])
+
+    if not File.exists?(python_dl_path) do
+      raise ArgumentError, "the given dynamic library file does not exist: #{python_dl_path}"
+    end
+
+    if not File.dir?(python_home_path) do
+      raise ArgumentError, "the given python home directory does not exist: #{python_home_path}"
+    end
+
+    if not File.exists?(python_home_path) do
+      raise ArgumentError, "the given python executable does not exist: #{python_executable_path}"
+    end
+
+    Pythonx.NIF.init(python_dl_path, python_home_path, python_executable_path, opts[:sys_paths])
   end
 
   @doc ~S'''
