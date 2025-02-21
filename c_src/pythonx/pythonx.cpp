@@ -1378,7 +1378,7 @@ extern "C" void pythonx_handle_io_write(const char *message,
     enif_free_env(env);
   } else {
     std::cerr << "[pythonx] whereis(Pythonx.Janitor) failed. This is "
-                 "unexpected and an output ill be dropped"
+                 "unexpected and an output will be dropped"
               << std::endl;
   }
 }

@@ -269,6 +269,36 @@ defmodule PythonxTest do
              end) =~ "error from Python\n"
     end
 
+    test "sends standard output and error to custom processes when specified" do
+      {:ok, io} = StringIO.open("")
+
+      Pythonx.eval(
+        """
+        import sys
+        import threading
+
+        print("hello from Python")
+        print("error from Python", file=sys.stderr)
+
+        def run():
+          print("hello from thread")
+
+        thread = threading.Thread(target=run)
+        thread.start()
+        thread.join()
+        """,
+        %{},
+        stdout_device: io,
+        stderr_device: io
+      )
+
+      {:ok, {_, output}} = StringIO.close(io)
+
+      assert output =~ "hello from Python"
+      assert output =~ "error from Python"
+      assert output =~ "hello from thread"
+    end
+
     test "raises Python error on stdin attempt" do
       assert_raise Pythonx.Error, ~r/RuntimeError: stdin not supported/, fn ->
         Pythonx.eval(

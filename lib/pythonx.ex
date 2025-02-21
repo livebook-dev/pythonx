@@ -137,6 +137,14 @@ defmodule Pythonx do
   > those releases the GIL. GIL is also released when waiting on I/O
   > operations.
 
+  ## Options
+
+    * `:stdout_device` - IO process to send Python stdout output to.
+      Defaults to the caller's group leader.
+
+    * `:stderr_device` - IO process to send Python stderr output to.
+      Defaults to the global `:standard_error`.
+
   ## Examples
 
       iex> {result, globals} =
@@ -201,9 +209,12 @@ defmodule Pythonx do
       >
 
   '''
-  @spec eval(String.t(), %{optional(String.t()) => term()}) ::
+  @spec eval(String.t(), %{optional(String.t()) => term()}, keyword()) ::
           {Object.t() | nil, %{optional(String.t()) => Object.t()}}
-  def eval(code, globals) do
+  def eval(code, globals, opts \\ [])
+      when is_binary(code) and is_map(globals) and is_list(opts) do
+    opts = Keyword.validate!(opts, [:stdout_device, :stderr_device])
+
     globals =
       for {key, value} <- globals do
         if not is_binary(key) do
@@ -214,8 +225,11 @@ defmodule Pythonx do
       end
 
     code_md5 = :erlang.md5(code)
-    stdout_device = Process.group_leader()
-    stderr_device = Process.whereis(:standard_error)
+
+    stdout_device = Keyword.get_lazy(opts, :stdout_device, fn -> Process.group_leader() end)
+
+    stderr_device =
+      Keyword.get_lazy(opts, :stderr_device, fn -> Process.whereis(:standard_error) end)
 
     result = Pythonx.NIF.eval(code, code_md5, globals, stdout_device, stderr_device)
 
