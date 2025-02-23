@@ -289,10 +289,10 @@ defmodule Pythonx do
     assignments =
       for name <- defined do
         quote do
-          unquote({String.to_atom(name), [], nil}) = Map.get(globals, unquote(name), nil)
-          # We do an extra underscore assignment to make sure the
-          # generated code does not trigger an unused variable warning.
-          _ = unquote({String.to_atom(name), [], nil})
+          # We include :generated to avoid unused variable warnings,
+          # if the variables are not referenced later on.
+          unquote({String.to_atom(name), [generated: true], nil}) =
+            Map.get(globals, unquote(name), nil)
         end
       end
 
