@@ -413,6 +413,25 @@ defmodule PythonxTest do
 
       assert repr(result) == "43"
     end
+
+    test "does not result in unused variables" do
+      {_result, diagnostics} =
+        Code.with_diagnostics(fn ->
+          Code.eval_string(~s'''
+          defmodule TestModule#{System.unique_integer([:positive])} do
+            import Pythonx
+
+            def run() do
+              ~PY"""
+              x = 1
+              """
+            end
+          end
+          ''')
+        end)
+
+      assert diagnostics == []
+    end
   end
 
   defp repr(object) do
