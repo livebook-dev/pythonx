@@ -62,9 +62,9 @@ namespace pythonx::python {
 
 // Opaque types
 
+using PyInterpreterStatePtr = void *;
 using PyObjectPtr = void *;
 using PyThreadStatePtr = void *;
-using PyGILState_STATE = unsigned char;
 using Py_ssize_t = ssize_t;
 
 // Functions
@@ -85,13 +85,13 @@ extern void (*PyErr_Fetch)(PyObjectPtr *, PyObjectPtr *, PyObjectPtr *);
 extern PyObjectPtr (*PyErr_Occurred)();
 extern PyObjectPtr (*PyEval_GetBuiltins)();
 extern PyObjectPtr (*PyEval_EvalCode)(PyObjectPtr, PyObjectPtr, PyObjectPtr);
+extern void (*PyEval_RestoreThread)(PyThreadStatePtr);
 extern PyThreadStatePtr (*PyEval_SaveThread)();
 extern double (*PyFloat_AsDouble)(PyObjectPtr);
 extern PyObjectPtr (*PyFloat_FromDouble)(double);
-extern PyGILState_STATE (*PyGILState_Ensure)();
-extern void (*PyGILState_Release)(PyGILState_STATE);
 extern PyObjectPtr (*PyImport_AddModule)(const char *);
 extern PyObjectPtr (*PyImport_ImportModule)(const char *);
+extern PyInterpreterStatePtr (*PyInterpreterState_Get)();
 extern PyObjectPtr (*PyIter_Next)(PyObjectPtr);
 extern int (*PyList_Append)(PyObjectPtr, PyObjectPtr);
 extern PyObjectPtr (*PyList_GetItem)(PyObjectPtr, Py_ssize_t);
@@ -114,6 +114,7 @@ extern PyObjectPtr (*PyObject_Str)(PyObjectPtr);
 extern int (*PySet_Add)(PyObjectPtr, PyObjectPtr);
 extern PyObjectPtr (*PySet_New)(PyObjectPtr);
 extern Py_ssize_t (*PySet_Size)(PyObjectPtr);
+extern PyThreadStatePtr (*PyThreadState_New)(PyInterpreterStatePtr);
 extern PyObjectPtr (*PyTuple_GetItem)(PyObjectPtr, Py_ssize_t);
 extern PyObjectPtr (*PyTuple_New)(Py_ssize_t);
 extern PyObjectPtr (*PyTuple_Pack)(Py_ssize_t, ...);
@@ -124,7 +125,6 @@ extern PyObjectPtr (*PyUnicode_FromStringAndSize)(const char *, Py_ssize_t);
 extern PyObjectPtr (*Py_BuildValue)(const char *, ...);
 extern PyObjectPtr (*Py_CompileString)(const char *, const char *, int);
 extern void (*Py_DecRef)(PyObjectPtr);
-extern int (*Py_FinalizeEx)();
 extern void (*Py_IncRef)(PyObjectPtr);
 extern void (*Py_InitializeEx)(int);
 extern int (*Py_IsFalse)(PyObjectPtr);
