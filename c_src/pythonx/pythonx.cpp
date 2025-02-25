@@ -44,13 +44,13 @@ class PyGILGuard {
   // using libraries depending on pybind11.
   //
   // pybind11 is a popular library for writing C extensions in Python
-  // packages. It provies convenient C++ API on top of the Python C
+  // packages. It provides convenient C++ API on top of the Python C
   // API. In particular, it provides conveniences for dealing with
   // GIL, one of them being `gil_scoped_acquire`. The implementation
   // has a bug that results in a dangling pointer being used. This
   // bug only appears when the code runs in a non-main thread that
   // manages the `gil_scoped_acquire` checks if the calling thread
-  // alread holds GIL with `PyGILState_Ensure` and `PyGILState_Release`.
+  // already holds GIL with `PyGILState_Ensure` and `PyGILState_Release`.
   // Specifically, the GIL, in which case it stores the pointer to
   // the corresponding `PyThreadState`. After `PyGILState_Release`,
   // the thread state is freed, but subsequent usage of `gil_scoped_acquire`
@@ -292,7 +292,7 @@ fine::Ok<> init(ErlNifEnv *env, std::string python_dl_path,
   load_python_library(python_dl_path);
 
   // The path needs to be available for the whole interpreter lifetime,
-  // so we store it in a global varibale.
+  // so we store it in a global variable.
   python_home_path_w = std::wstring(
       python_home_path.data, python_home_path.data + python_home_path.size);
 
@@ -464,7 +464,7 @@ FINE_NIF(init, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 fine::Ok<> janitor_decref(ErlNifEnv *env, uint64_t ptr) {
   auto init_guard = std::lock_guard<std::mutex>(init_mutex);
 
-  // If the intepreter is no longer initialized, ignore the call
+  // If the interpreter is no longer initialized, ignore the call
   if (is_initialized) {
     auto gil_guard = PyGILGuard();
 
@@ -1193,7 +1193,7 @@ eval(ErlNifEnv *env, ErlNifBinary code, std::string code_md5,
   // of a class defined via evaluation. The pickle module consults
   // sys.modules (in this case sys.modules["__main__"]) and looks up
   // the class or function name. If we use a plain dict as globals,
-  // the class will be defined only in that dict and such lookups wil
+  // the class will be defined only in that dict and such lookups will
   // fail.
   //
   // However, it is worth noting that the current approach is not
@@ -1241,7 +1241,7 @@ eval(ErlNifEnv *env, ErlNifBinary code, std::string code_md5,
   //   1. We dump EvalInfo into Python bytes and store it in globals
   //      as __pythonx_eval_info_bytes__.
   //
-  //   2. When IO happens, our custom sys.stdout.write (overriden on
+  //   2. When IO happens, our custom sys.stdout.write (overridden on
   //      init) retrieves the info from globals and calls the
   //      pythonx_handle_io_write C function, passing the info.
   //
