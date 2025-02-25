@@ -39,8 +39,6 @@ std::mutex thread_states_mutex;
 //
 // [1]: https://en.wikipedia.org/wiki/Resource_acquisition_is_initialization
 class PyGILGuard {
-  std::thread::id thread_id;
-
   // The simplest way to implement this guard is to use `PyGILState_Ensure`
   // and `PyGILState_Release`, however this can lead to segfaults when
   // using libraries depending on pybind11.
@@ -78,18 +76,19 @@ class PyGILGuard {
 
 public:
   PyGILGuard() {
-    this->thread_id = std::this_thread::get_id();
+    auto thread_id = std::this_thread::get_id();
 
     PyThreadStatePtr state;
 
     {
       auto guard = std::lock_guard<std::mutex>(thread_states_mutex);
 
-      if (thread_states.find(this->thread_id) == thread_states.end()) {
+      if (thread_states.find(thread_id) == thread_states.end()) {
         // Note that PyThreadState_New does not require GIL to be held.
         state = PyThreadState_New(interpreter_state);
+        thread_states[thread_id] = state;
       } else {
-        state = thread_states[this->thread_id];
+        state = thread_states[thread_id];
       }
     }
 
