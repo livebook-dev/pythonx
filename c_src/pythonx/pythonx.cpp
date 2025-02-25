@@ -26,6 +26,9 @@ std::wstring python_home_path_w;
 std::wstring python_executable_path_w;
 std::map<std::string, std::tuple<PyObjectPtr, PyObjectPtr>> compilation_cache;
 std::mutex compilation_cache_mutex;
+PyInterpreterStatePtr interpreter_state;
+std::map<std::thread::id, PyThreadStatePtr> thread_states;
+std::mutex thread_states_mutex;
 
 // Wrapper around the Python Global Interpreter Lock (GIL).
 //
@@ -36,12 +39,63 @@ std::mutex compilation_cache_mutex;
 //
 // [1]: https://en.wikipedia.org/wiki/Resource_acquisition_is_initialization
 class PyGILGuard {
-  PyGILState_STATE state;
+  // The simplest way to implement this guard is to use `PyGILState_Ensure`
+  // and `PyGILState_Release`, however this can lead to segfaults when
+  // using libraries depending on pybind11.
+  //
+  // pybind11 is a popular library for writing C extensions in Python
+  // packages. It provies convenient C++ API on top of the Python C
+  // API. In particular, it provides conveniences for dealing with
+  // GIL, one of them being `gil_scoped_acquire`. The implementation
+  // has a bug that results in a dangling pointer being used. This
+  // bug only appears when the code runs in a non-main thread that
+  // manages the `gil_scoped_acquire` checks if the calling thread
+  // alread holds GIL with `PyGILState_Ensure` and `PyGILState_Release`.
+  // Specifically, the GIL, in which case it stores the pointer to
+  // the corresponding `PyThreadState`. After `PyGILState_Release`,
+  // the thread state is freed, but subsequent usage of `gil_scoped_acquire`
+  // still re-uses the pointer. This issues has been reported in [1].
+  //
+  // In our case, we evaluate Python code dirty scheduler threads.
+  // This means that the threads are reused and we acquire the GIL
+  // every time. In order to avoid the pybind11 bug, we want to avoid
+  // using `PyGILState_Release`, and instead have a permanent `PyThreadState`
+  // for each of the dirty scheduler threads. We do this by creating
+  // new state when the given scheduler thread obtains the GIL for
+  // the first time. Then, we use `PyEval_RestoreThread` and `PyEval_SaveThread`
+  // to acquire and release the GIL respectively.
+  //
+  // NOTE: the dirty scheduler thread pool is fixed, so the map does
+  // not grow beyond that. If we ever need to acquire the GIL from
+  // other threads, we should extend this implementation to either
+  // allow removing the state on destruction, or have a variant with
+  // `PyGILState_Ensure` and `PyGILState_Release`, as long as it does
+  // not fall into the bug described above.
+  //
+  // [1]: https://github.com/pybind/pybind11/issues/2888
 
 public:
-  PyGILGuard() { this->state = PyGILState_Ensure(); }
+  PyGILGuard() {
+    auto thread_id = std::this_thread::get_id();
 
-  ~PyGILGuard() { PyGILState_Release(this->state); }
+    PyThreadStatePtr state;
+
+    {
+      auto guard = std::lock_guard<std::mutex>(thread_states_mutex);
+
+      if (thread_states.find(thread_id) == thread_states.end()) {
+        // Note that PyThreadState_New does not require GIL to be held.
+        state = PyThreadState_New(interpreter_state);
+        thread_states[thread_id] = state;
+      } else {
+        state = thread_states[thread_id];
+      }
+    }
+
+    PyEval_RestoreThread(state);
+  }
+
+  ~PyGILGuard() { PyEval_SaveThread(); }
 };
 
 // Ensures the given object refcount is decremented when the guard
@@ -275,6 +329,8 @@ fine::Ok<> init(ErlNifEnv *env, std::string python_dl_path,
 
   Py_InitializeEx(0);
 
+  interpreter_state = PyInterpreterState_Get();
+
   // In order to use any of the Python C API functions, the calling
   // thread must hold the GIL. Since every NIF call may run on a
   // different dirty scheduler thread, we need to acquire the GIL at
@@ -285,7 +341,7 @@ fine::Ok<> init(ErlNifEnv *env, std::string python_dl_path,
   // See pyo3 [1] for an extra reference.
   //
   // [1]: https://github.com/PyO3/pyo3/blob/v0.23.3/src/gil.rs#L63-L74
-  PyEval_SaveThread();
+  thread_states[std::this_thread::get_id()] = PyEval_SaveThread();
 
   is_initialized = true;
 
@@ -404,40 +460,6 @@ sys.stdin = Stdin()
 }
 
 FINE_NIF(init, ERL_NIF_DIRTY_JOB_CPU_BOUND);
-
-// Note that this NIF is here for the reference, but currently we do
-// not support deinitialization. While in principle it should be
-// possible to reinitialize Python, it can lead to issues in practice.
-// For example, doing so while using numpy simply does not work, see
-// [1] for discussion points.
-//
-// [1]: https://bugs.python.org/issue34309
-fine::Ok<> terminate(ErlNifEnv *env) {
-  ensure_initialized();
-
-  auto init_guard = std::lock_guard<std::mutex>(init_mutex);
-
-  // Here we only acquire the GIL, since releasing after finalization
-  // makes no sense
-  PyGILState_Ensure();
-
-  if (Py_FinalizeEx() == -1) {
-    throw std::runtime_error("failed to finalize Python interpreter");
-  }
-
-  is_initialized = false;
-
-  auto compilation_cache_guard =
-      std::lock_guard<std::mutex>(compilation_cache_mutex);
-  compilation_cache.clear();
-
-  // Raises runtime error on failure, which is propagated automatically
-  unload_python_library();
-
-  return fine::Ok<>();
-}
-
-FINE_NIF(terminate, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 fine::Ok<> janitor_decref(ErlNifEnv *env, uint64_t ptr) {
   auto init_guard = std::lock_guard<std::mutex>(init_mutex);
