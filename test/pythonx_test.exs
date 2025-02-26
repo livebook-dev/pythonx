@@ -386,9 +386,7 @@ defmodule PythonxTest do
           ''',
           []
         )
-
-        end
-
+      end
     end
 
     test "global redefinition" do

@@ -285,12 +285,12 @@ defmodule Pythonx do
 
     globals_entries =
       for name <- referenced,
-        name_atom = String.to_atom(name),
-        # We only reference variables that are actually defined. This
-        # way, if an undefined variable is referenced in the Python
-        # code, it results in an informative Python error, rather than
-        # Elixir compile error.
-        Map.has_key?(versioned_vars, {name_atom, nil}) do
+          name_atom = String.to_atom(name),
+          # We only reference variables that are actually defined.
+          # This way, if an undefined variable is referenced in the
+          # Python code, it results in an informative Python error,
+          # rather than Elixir compile error.
+          Map.has_key?(versioned_vars, {name_atom, nil}) do
         {name, {name_atom, [], nil}}
       end
 
