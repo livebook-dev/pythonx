@@ -60,7 +60,7 @@ defmodule Pythonx do
 
   # Initializes the Python interpreter.
   #
-  # > #### Reproducability {: .info}
+  # > #### Reproducibility {: .info}
   # >
   # > This function can be called to use a custom Python installation,
   # > however in most cases it is more convenient to call `uv_init/2`,
