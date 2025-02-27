@@ -374,6 +374,21 @@ defmodule PythonxTest do
       assert Keyword.keys(binding) == [:x]
     end
 
+    test "results in a Python error when a variable is undefined" do
+      assert_raise Pythonx.Error, ~r/NameError: name 'x' is not defined/, fn ->
+        Code.eval_string(
+          ~S'''
+          import Pythonx
+
+          ~PY"""
+          x + 1
+          """
+          ''',
+          []
+        )
+      end
+    end
+
     test "global redefinition" do
       {_result, binding} =
         Code.eval_string(
@@ -414,7 +429,7 @@ defmodule PythonxTest do
       assert repr(result) == "43"
     end
 
-    test "does not result in unused variables" do
+    test "does not result in unused variables diagnostics" do
       {_result, diagnostics} =
         Code.with_diagnostics(fn ->
           Code.eval_string(~s'''
