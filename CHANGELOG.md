@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [v0.4.2](https://github.com/livebook-dev/pythonx/tree/v0.4.2) (2025-02-27)
+
+### Changed
+
+* `~PY` sigil to not reference undefined Elixir variables ([#12](https://github.com/livebook-dev/pythonx/pull/12))
+
 ## [v0.4.1](https://github.com/livebook-dev/pythonx/tree/v0.4.1) (2025-02-25)
 
 ### Fixed
