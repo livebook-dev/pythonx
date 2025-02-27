@@ -281,7 +281,7 @@ defmodule Pythonx do
   defmacro sigil_PY({:<<>>, _meta, [code]}, []) when is_binary(code) do
     %{referenced: referenced, defined: defined} = Pythonx.AST.scan_globals(code)
 
-    versioned_vars = __CALLER__.versioned_vars
+    caller = __CALLER__
 
     globals_entries =
       for name <- referenced,
@@ -290,7 +290,7 @@ defmodule Pythonx do
           # This way, if an undefined variable is referenced in the
           # Python code, it results in an informative Python error,
           # rather than Elixir compile error.
-          Map.has_key?(versioned_vars, {name_atom, nil}) do
+          Macro.Env.has_var?(caller, {name_atom, nil}) do
         {name, {name_atom, [], nil}}
       end
 
