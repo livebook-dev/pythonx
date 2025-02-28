@@ -412,4 +412,11 @@ defmodule Pythonx do
         term
     end
   end
+
+  def decode(nil) do
+    raise ArgumentError,
+          "Pythonx.decode/1 expects a %Pythonx.Object{}, but got nil. " <>
+            "Note that Pythonx.eval/2 or the ~PY sigil result in nil, if the " <>
+            "evaluated code ends with a statement, rather than expression"
+  end
 end
