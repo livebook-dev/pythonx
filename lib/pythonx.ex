@@ -76,7 +76,10 @@ defmodule Pythonx do
   # located in `{python_home_path}/lib/pythonx.y` (Linux and macOS)
   # or `{python_home_path}/Lib` (Windows).
   #
-  # `python_executable_path` is the Python executable file.
+  # `python_executable_path` is the Python executable file. When using
+  # venv, it is preferable to point to an executable in the venv
+  # directory, which is relevant if additional packages are installed
+  # at runtime.
   #
   # ## Options
   #
