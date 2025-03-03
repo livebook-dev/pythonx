@@ -5,6 +5,8 @@ defmodule Pythonx.Application do
 
   @impl true
   def start(_type, _args) do
+    enable_sigchld()
+
     children = [
       Pythonx.Janitor
     ]
@@ -25,5 +27,17 @@ defmodule Pythonx.Application do
     defp maybe_uv_init(), do: Pythonx.Uv.init(unquote(pyproject_toml), true)
   else
     defp maybe_uv_init(), do: :noop
+  end
+
+  defp enable_sigchld() do
+    # Some APIs in Python, such as subprocess.run, wait for a child
+    # OS process to finish. On Unix, this relies on `waitpid` C API,
+    # which does not work properly if SIGCHLD is ignored, resulting
+    # in infinite waiting. ERTS ignores the signal by default, so we
+    # explicitly restore the default handler.
+    case :os.type() do
+      {:win32, _osname} -> :ok
+      {:unix, _osname} -> :os.set_signal(:sigchld, :default)
+    end
   end
 end
