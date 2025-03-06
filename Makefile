@@ -2,7 +2,7 @@ PRIV_DIR = $(MIX_APP_PATH)/priv
 NIF_PATH = $(PRIV_DIR)/libpythonx.so
 
 C_SRC = $(shell pwd)/c_src/pythonx
-CPPFLAGS = -shared -fPIC -std=c++17 -Wall -Wextra -Wno-unused-parameter -Wno-comment
+CPPFLAGS = -shared -fPIC -fvisibility=hidden -std=c++17 -Wall -Wextra -Wno-unused-parameter -Wno-comment
 CPPFLAGS += -I$(ERTS_INCLUDE_DIR) -I$(FINE_INCLUDE_DIR)
 
 ifdef DEBUG
