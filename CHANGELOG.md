@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [v0.4.3](https://github.com/livebook-dev/pythonx/tree/v0.4.3) (2025-03-06)
+
+### Changed
+
+* `sys.executable` to point to a Python executable inside venv, instead of global one ([#14](https://github.com/livebook-dev/pythonx/pull/14))
+
+### Fixed
+
+* Waiting on a child process to finish indefinitely (for example `subprocess.run`) ([#15](https://github.com/livebook-dev/pythonx/pull/15))
+
 ## [v0.4.2](https://github.com/livebook-dev/pythonx/tree/v0.4.2) (2025-02-27)
 
 ### Changed
