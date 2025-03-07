@@ -266,16 +266,14 @@ void raise_if_failed(ErlNifEnv *env, Py_ssize_t size) {
   }
 }
 
-ERL_NIF_TERM py_object_to_binary_term(ErlNifEnv *env, PyObjectPtr py_object) {
+ERL_NIF_TERM py_str_to_binary_term(ErlNifEnv *env, PyObjectPtr py_object) {
   Py_ssize_t size;
   auto buffer = PyUnicode_AsUTF8AndSize(py_object, &size);
   raise_if_failed(env, buffer);
 
-  ERL_NIF_TERM binary_term;
-  auto data = enif_make_new_binary(env, size, &binary_term);
-  memcpy(data, buffer, size);
-
-  return binary_term;
+  Py_IncRef(py_object);
+  auto ex_object_resource = fine::make_resource<ExObjectResource>(py_object);
+  return fine::make_resource_binary(env, ex_object_resource, buffer, size);
 }
 
 fine::Ok<> init(ErlNifEnv *env, std::string python_dl_path,
@@ -583,7 +581,7 @@ fine::Term unicode_to_string(ErlNifEnv *env, ExObject ex_object) {
   ensure_initialized();
   auto gil_guard = PyGILGuard();
 
-  return py_object_to_binary_term(env, ex_object.resource->py_object);
+  return py_str_to_binary_term(env, ex_object.resource->py_object);
 }
 
 FINE_NIF(unicode_to_string, ERL_NIF_DIRTY_JOB_CPU_BOUND);
@@ -745,7 +743,7 @@ fine::Term format_exception(ErlNifEnv *env, ExError error) {
     auto py_line = PyList_GetItem(py_lines, i);
     raise_if_failed(env, py_line);
 
-    terms.push_back(py_object_to_binary_term(env, py_line));
+    terms.push_back(py_str_to_binary_term(env, py_line));
   }
 
   return enif_make_list_from_array(env, terms.data(),
@@ -803,7 +801,7 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
     raise_if_failed(env, py_str);
     auto py_str_guard = PyDecRefGuard(py_str);
 
-    auto binary_term = py_object_to_binary_term(env, py_str);
+    auto binary_term = py_str_to_binary_term(env, py_str);
 
     return fine::encode(
         env, std::make_tuple(atoms::integer, fine::Term(binary_term)));
@@ -904,7 +902,7 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
   auto is_unicode = PyObject_IsInstance(py_object, py_str_type);
   raise_if_failed(env, is_unicode);
   if (is_unicode) {
-    return py_object_to_binary_term(env, py_object);
+    return py_str_to_binary_term(env, py_object);
   }
 
   auto py_bytes_type = PyDict_GetItemString(py_builtins, "bytes");
@@ -917,11 +915,9 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
     auto result = PyBytes_AsStringAndSize(py_object, &buffer, &size);
     raise_if_failed(env, result);
 
-    ERL_NIF_TERM binary_term;
-    auto data = enif_make_new_binary(env, size, &binary_term);
-    memcpy(data, buffer, size);
-
-    return binary_term;
+    Py_IncRef(py_object);
+    auto ex_object_resource = fine::make_resource<ExObjectResource>(py_object);
+    return fine::make_resource_binary(env, ex_object_resource, buffer, size);
   }
 
   auto py_set_type = PyDict_GetItemString(py_builtins, "set");
@@ -1341,7 +1337,7 @@ eval(ErlNifEnv *env, ErlNifBinary code, std::string code_md5,
       continue;
     }
 
-    auto key_term = py_object_to_binary_term(env, py_key);
+    auto key_term = py_str_to_binary_term(env, py_key);
     key_terms.push_back(key_term);
 
     // Incref before making the resource
