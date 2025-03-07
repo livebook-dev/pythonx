@@ -8,8 +8,7 @@ defmodule Pythonx.Utils do
   """
   @spec fetch_body!(String.t()) :: binary()
   def fetch_body!(url) do
-    {:ok, _} = Application.ensure_all_started(:inets)
-    {:ok, _} = Application.ensure_all_started(:ssl)
+    {:ok, _} = Application.ensure_all_started([:inets, :ssl, :public_key])
 
     # Starting an HTTP client profile allows us to scope the httpc
     # configuration options, such as proxy options.
