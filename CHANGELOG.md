@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [v0.4.4](https://github.com/livebook-dev/pythonx/tree/v0.4.4) (2025-03-07)
+
+### Fixed
+
+* Added missing `:extra_applications`, which caused `Pythonx.uv_init/1` to fail in certain environments
+
 ## [v0.4.3](https://github.com/livebook-dev/pythonx/tree/v0.4.3) (2025-03-06)
 
 ### Changed
