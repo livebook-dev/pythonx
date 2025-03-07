@@ -1,8 +1,8 @@
-PRIV_DIR = $(MIX_APP_PATH)/priv
-NIF_PATH = $(PRIV_DIR)/libpythonx.so
+PRIV_DIR := $(MIX_APP_PATH)/priv
+NIF_PATH := $(PRIV_DIR)/libpythonx.so
+C_SRC = $(shell pwd)/c_src
 
-C_SRC = $(shell pwd)/c_src/pythonx
-CPPFLAGS = -shared -fPIC -fvisibility=hidden -std=c++17 -Wall -Wextra -Wno-unused-parameter -Wno-comment
+CPPFLAGS := -shared -fPIC -fvisibility=hidden -std=c++17 -Wall -Wextra -Wno-unused-parameter -Wno-comment
 CPPFLAGS += -I$(ERTS_INCLUDE_DIR) -I$(FINE_INCLUDE_DIR)
 
 ifdef DEBUG
@@ -11,11 +11,8 @@ else
 	CPPFLAGS += -O3
 endif
 
-UNAME_S := $(shell uname -s)
 ifndef TARGET_ABI
-ifeq ($(UNAME_S),Darwin)
-	TARGET_ABI = darwin
-endif
+  TARGET_ABI := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 endif
 
 ifeq ($(TARGET_ABI),darwin)
@@ -25,7 +22,7 @@ endif
 SOURCES = $(wildcard $(C_SRC)/*.cpp)
 HEADERS = $(wildcard $(C_SRC)/*.hpp)
 
-build: $(NIF_PATH)
+all: $(NIF_PATH)
 	@ echo > /dev/null # Dummy command to avoid the default output "Nothing to be done"
 
 $(NIF_PATH): $(SOURCES) $(HEADERS)
