@@ -271,6 +271,8 @@ ERL_NIF_TERM py_str_to_binary_term(ErlNifEnv *env, PyObjectPtr py_object) {
   auto buffer = PyUnicode_AsUTF8AndSize(py_object, &size);
   raise_if_failed(env, buffer);
 
+  // The buffer is immutable and lives as long as the Python object,
+  // so we create the term as a resource binary to make it zero-copy.
   Py_IncRef(py_object);
   auto ex_object_resource = fine::make_resource<ExObjectResource>(py_object);
   return fine::make_resource_binary(env, ex_object_resource, buffer, size);
@@ -915,6 +917,8 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
     auto result = PyBytes_AsStringAndSize(py_object, &buffer, &size);
     raise_if_failed(env, result);
 
+    // The buffer is immutable and lives as long as the Python object,
+    // so we create the term as a resource binary to make it zero-copy.
     Py_IncRef(py_object);
     auto ex_object_resource = fine::make_resource<ExObjectResource>(py_object);
     return fine::make_resource_binary(env, ex_object_resource, buffer, size);
