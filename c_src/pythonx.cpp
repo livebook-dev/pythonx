@@ -137,7 +137,7 @@ auto list = fine::Atom("list");
 auto map = fine::Atom("map");
 auto map_set = fine::Atom("map_set");
 auto output = fine::Atom("output");
-auto ref = fine::Atom("ref");
+auto resource = fine::Atom("resource");
 auto traceback = fine::Atom("traceback");
 auto tuple = fine::Atom("tuple");
 auto type = fine::Atom("type");
@@ -190,7 +190,7 @@ struct ExObject {
   static constexpr auto module = &atoms::ElixirPythonxObject;
 
   static constexpr auto fields() {
-    return std::make_tuple(std::make_tuple(&ExObject::resource, &atoms::ref));
+    return std::make_tuple(std::make_tuple(&ExObject::resource, &atoms::resource));
   }
 };
 
