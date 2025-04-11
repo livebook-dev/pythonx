@@ -216,6 +216,11 @@ defmodule Pythonx do
           {Object.t() | nil, %{optional(String.t()) => Object.t()}}
   def eval(code, globals, opts \\ [])
       when is_binary(code) and is_map(globals) and is_list(opts) do
+    if not pythonx_started?() do
+      raise RuntimeError,
+            "the :pythonx application needs to be started before calling Pythonx.eval/3"
+    end
+
     opts = Keyword.validate!(opts, [:stdout_device, :stderr_device])
 
     globals =
@@ -242,6 +247,10 @@ defmodule Pythonx do
     Pythonx.Janitor.ping()
 
     result
+  end
+
+  defp pythonx_started?() do
+    Process.whereis(Pythonx.Supervisor) != nil
   end
 
   @doc ~S'''
@@ -313,12 +322,19 @@ defmodule Pythonx do
       result
     end
   rescue
-    RuntimeError ->
-      raise RuntimeError,
-            "using ~PY sigil requires the Python interpreter to be already initialized. " <>
-              "This sigil is designed for dynamic evaluation environments, such as IEx or Livebook. " <>
-              "If that is your case, make sure you initialized the interpreter first, otherwise " <>
-              "use Pythonx.eval/2 instead. For more details see Pythonx.sigil_PY/2 docs"
+    error in RuntimeError ->
+      message = Exception.message(error)
+
+      if message =~ "has not been initialized" do
+        raise RuntimeError,
+              Exception.message(error) <>
+                "using ~PY sigil requires the Python interpreter to be already initialized. " <>
+                "This sigil is designed for dynamic evaluation environments, such as IEx or Livebook. " <>
+                "If that is your case, make sure you initialized the interpreter first, otherwise " <>
+                "use Pythonx.eval/2 instead. For more details see Pythonx.sigil_PY/2 docs"
+      else
+        reraise(error, __STACKTRACE__)
+      end
   end
 
   @doc """
