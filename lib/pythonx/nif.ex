@@ -35,6 +35,7 @@ defmodule Pythonx.NIF do
   def format_exception(_error), do: err!()
   def decode_once(_object), do: err!()
   def eval(_code, _code_md5, _globals, _stdout_device, _stderr_device), do: err!()
+  def pid_new(_pid), do: err!()
 
   defp err!(), do: :erlang.nif_error(:not_loaded)
 end

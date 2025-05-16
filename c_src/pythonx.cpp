@@ -698,6 +698,20 @@ fine::Ok<> set_add(ErlNifEnv *env, ExObject ex_object, ExObject ex_key) {
 
 FINE_NIF(set_add, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
+ExObject pid_new(ErlNifEnv *env, ErlNifPid pid) {
+  ensure_initialized();
+  auto gil_guard = PyGILGuard();
+  
+  // https://www.erlang.org/doc/apps/erts/erl_nif.html:
+  //   ErlNifPid is an opaque type. **It can be copied**, moved in memory, forgotten, and so on.
+  auto py_bytes = PyBytes_FromStringAndSize((const char *)&pid, sizeof(ErlNifPid));
+  raise_if_failed(env, py_bytes);
+
+  return ExObject(fine::make_resource<ExObjectResource>(py_bytes));
+}
+
+FINE_NIF(pid_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
+
 ExObject object_repr(ErlNifEnv *env, ExObject ex_object) {
   ensure_initialized();
   auto gil_guard = PyGILGuard();
