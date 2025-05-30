@@ -79,7 +79,7 @@ jobs:
             cache/*.sha256
 
   windows:
-    runs-on: windows-2019
+    runs-on: windows-2022
     env:
       MIX_ENV: prod
       ELIXIR_VERSION: "1.15.3"
