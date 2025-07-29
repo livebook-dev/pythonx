@@ -190,7 +190,8 @@ struct ExObject {
   static constexpr auto module = &atoms::ElixirPythonxObject;
 
   static constexpr auto fields() {
-    return std::make_tuple(std::make_tuple(&ExObject::resource, &atoms::resource));
+    return std::make_tuple(
+        std::make_tuple(&ExObject::resource, &atoms::resource));
   }
 };
 
@@ -216,8 +217,8 @@ struct ExError {
 };
 
 struct EvalInfo {
-  ErlNifPid stdout_device;
-  ErlNifPid stderr_device;
+  fine::Term stdout_device;
+  fine::Term stderr_device;
   ErlNifEnv *env;
   std::thread::id thread_id;
 };
@@ -1140,7 +1141,7 @@ std::tuple<PyObjectPtr, PyObjectPtr> compile(ErlNifEnv *env,
 std::tuple<std::optional<ExObject>, fine::Term>
 eval(ErlNifEnv *env, ErlNifBinary code, std::string code_md5,
      std::vector<std::tuple<ErlNifBinary, ExObject>> globals,
-     ErlNifPid stdout_device, ErlNifPid stderr_device) {
+     fine::Term stdout_device, fine::Term stderr_device) {
   ensure_initialized();
 
   // Step 1: compile (or get cached result)
@@ -1388,7 +1389,8 @@ extern "C" void pythonx_handle_io_write(const char *message,
 
   // Note that we send the output to Pythonx.Janitor and it then sends
   // it to the device. We do this to avoid IO replies being sent to
-  // the calling Elixir process (which would be unexpected).
+  // the calling Elixir process (which would be unexpected). Additionally,
+  // we cannot send to remote PIDs from a NIF, while the Janitor can.
   auto janitor_name = fine::encode(env, pythonx::atoms::ElixirPythonxJanitor);
   ErlNifPid janitor_pid;
   if (enif_whereis_pid(caller_env, janitor_name, &janitor_pid)) {
