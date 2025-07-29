@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [v0.4.5](https://github.com/livebook-dev/pythonx/tree/v0.4.5) (2025-07-29)
 
-### Updated
+### Changed
 
 - Optimised converstion from Python bytes and strings to Elixir binaries to avoid copying ([#19](https://github.com/livebook-dev/pythonx/pull/19))
 
