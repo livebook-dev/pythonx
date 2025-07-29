@@ -14,13 +14,13 @@ jobs:
         include:
           - pair: { elixir: "1.15.8", otp: "25.3" }
             python_minor: "10"
-          - pair: { elixir: "1.18.1", otp: "27.2" }
+          - pair: { elixir: "1.18.4", otp: "27.2" }
             python_minor: "10"
-          - pair: { elixir: "1.18.1", otp: "27.2" }
+          - pair: { elixir: "1.18.4", otp: "27.2" }
             python_minor: "11"
-          - pair: { elixir: "1.18.1", otp: "27.2" }
+          - pair: { elixir: "1.18.4", otp: "27.2" }
             python_minor: "12"
-          - pair: { elixir: "1.18.1", otp: "27.2" }
+          - pair: { elixir: "1.18.4", otp: "27.2" }
             python_minor: "13"
             lint: true
     env:
@@ -59,7 +59,7 @@ jobs:
         include:
           - pair: { elixir: "1.15.8", otp: "25.3" }
             python_minor: "10"
-          - pair: { elixir: "1.18.1", otp: "27.2" }
+          - pair: { elixir: "1.18.4", otp: "27.2" }
             python_minor: "13"
     env:
       MIX_ENV: test
@@ -92,7 +92,7 @@ jobs:
         include:
           - pair: { elixir: "1.15.8", otp: "25.3" }
             python_minor: "10"
-          - pair: { elixir: "1.18.1", otp: "27.2" }
+          - pair: { elixir: "1.18.4", otp: "27.2" }
             python_minor: "13"
     env:
       MIX_ENV: test
