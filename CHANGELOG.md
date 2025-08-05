@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
-- Lower runtime glibc version requirement ([#29](https://github.com/livebook-dev/pythonx/pull/29))
+- Lowered the runtime glibc version requirement ([#29](https://github.com/livebook-dev/pythonx/pull/29))
 
 ## [v0.4.5](https://github.com/livebook-dev/pythonx/tree/v0.4.5) (2025-07-29)
 
