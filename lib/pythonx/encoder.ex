@@ -128,7 +128,11 @@ end
 
 defimpl Pythonx.Encoder, for: BitString do
   def encode(term, _encoder) when is_binary(term) do
-    Pythonx.NIF.bytes_from_binary(term)
+    if String.valid?(term) do
+      Pythonx.NIF.unicode_from_string(term)
+    else
+      Pythonx.NIF.bytes_from_binary(term)
+    end
   end
 
   def encode(term, _encoder) do

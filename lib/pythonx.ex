@@ -347,7 +347,7 @@ defmodule Pythonx do
 
       iex> Pythonx.encode!({1, true, "hello world"})
       #Pythonx.Object<
-        (1, True, b'hello world')
+        (1, True, 'hello world')
       >
 
   """

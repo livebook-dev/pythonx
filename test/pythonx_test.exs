@@ -25,13 +25,13 @@ defmodule PythonxTest do
     end
 
     test "string" do
-      assert repr(Pythonx.encode!("hello")) == "b'hello'"
+      assert repr(Pythonx.encode!("hello")) == "'hello'"
 
-      assert repr(Pythonx.encode!("🦊 in a 📦")) ==
-               ~S"b'\xf0\x9f\xa6\x8a in a \xf0\x9f\x93\xa6'"
+      assert repr(Pythonx.encode!("🦊 in a 📦")) == ~S"'🦊 in a 📦'"
     end
 
     test "binary" do
+      assert repr(Pythonx.encode!(<<104, 101, 108, 108, 111>>)) == "'hello'"
       assert repr(Pythonx.encode!(<<65, 255>>)) == ~S"b'A\xff'"
 
       assert_raise Protocol.UndefinedError, fn ->
@@ -41,17 +41,22 @@ defmodule PythonxTest do
 
     test "list" do
       assert repr(Pythonx.encode!([])) == "[]"
-      assert repr(Pythonx.encode!([1, 2.0, "hello"])) == "[1, 2.0, b'hello']"
+
+      assert repr(Pythonx.encode!([1, 2.0, "hello", <<65, 255>>])) ==
+               ~S"[1, 2.0, 'hello', b'A\xff']"
     end
 
     test "tuple" do
       assert repr(Pythonx.encode!({})) == "()"
       assert repr(Pythonx.encode!({1})) == "(1,)"
-      assert repr(Pythonx.encode!({1, 2.0, "hello"})) == "(1, 2.0, b'hello')"
+
+      assert repr(Pythonx.encode!({1, 2.0, "hello", <<65, 255>>})) ==
+               ~S"(1, 2.0, 'hello', b'A\xff')"
     end
 
     test "map" do
-      assert repr(Pythonx.encode!(%{"hello" => 1})) == "{b'hello': 1}"
+      assert repr(Pythonx.encode!(%{"hello" => 1})) == "{'hello': 1}"
+      assert repr(Pythonx.encode!(%{<<65, 255>> => 3.14})) == ~S"{b'A\xff': 3.14}"
       assert repr(Pythonx.encode!(%{2 => nil})) == "{2: None}"
     end
 
