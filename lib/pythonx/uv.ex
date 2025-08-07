@@ -3,17 +3,17 @@ defmodule Pythonx.Uv do
 
   require Logger
 
-  @uv_version "0.5.21"
+  def default_uv_version(), do: "0.8.5"
 
   @doc """
   Fetches Python and dependencies based on the given configuration.
   """
   @spec fetch(String.t(), boolean(), keyword()) :: :ok
   def fetch(pyproject_toml, priv?, opts \\ []) do
-    opts = Keyword.validate!(opts, force: false)
+    opts = Keyword.validate!(opts, force: false, uv_version: default_uv_version())
 
-    project_dir = project_dir(pyproject_toml, priv?)
-    python_install_dir = python_install_dir(priv?)
+    project_dir = project_dir(pyproject_toml, priv?, opts[:uv_version])
+    python_install_dir = python_install_dir(priv?, opts[:uv_version])
 
     if opts[:force] || priv? do
       _ = File.rm_rf(project_dir)
@@ -40,15 +40,15 @@ defmodule Pythonx.Uv do
     :ok
   end
 
-  defp python_install_dir(priv?) do
+  defp python_install_dir(priv?, uv_version) do
     if priv? do
       Path.join(:code.priv_dir(:pythonx), "uv/python")
     else
-      Path.join(cache_dir(), "python")
+      Path.join(cache_dir(uv_version), "python")
     end
   end
 
-  defp project_dir(pyproject_toml, priv?) do
+  defp project_dir(pyproject_toml, priv?, uv_version) do
     if priv? do
       Path.join(:code.priv_dir(:pythonx), "uv/project")
     else
@@ -57,7 +57,7 @@ defmodule Pythonx.Uv do
         |> :erlang.md5()
         |> Base.encode32(case: :lower, padding: false)
 
-      Path.join([cache_dir(), "projects", cache_id])
+      Path.join([cache_dir(uv_version), "projects", cache_id])
     end
   end
 
@@ -66,8 +66,9 @@ defmodule Pythonx.Uv do
   fetched by `fetch/3`.
   """
   @spec init(String.t(), boolean()) :: :ok
-  def init(pyproject_toml, priv?) do
-    project_dir = project_dir(pyproject_toml, priv?)
+  def init(pyproject_toml, priv?, opts \\ []) do
+    opts = Keyword.validate!(opts, uv_version: default_uv_version())
+    project_dir = project_dir(pyproject_toml, priv?, opts[:uv_version])
 
     # Uv stores Python installations in versioned directories in the
     # Python install dir. To find the versioned name for this project,
@@ -91,7 +92,7 @@ defmodule Pythonx.Uv do
         {:unix, _osname} -> Path.basename(Path.dirname(abs_executable_dir))
       end
 
-    root_dir = Path.join(python_install_dir(priv?), versioned_dir_name)
+    root_dir = Path.join(python_install_dir(priv?, opts[:uv_version]), versioned_dir_name)
 
     case :os.type() do
       {:win32, _osname} ->
@@ -158,10 +159,11 @@ defmodule Pythonx.Uv do
   defp make_windows_slashes(path), do: String.replace(path, "/", "\\")
 
   defp run!(args, opts) do
-    path = uv_path()
+    {uv_version, opts} = Keyword.pop(opts, :uv_version, default_uv_version())
+    path = uv_path(uv_version)
 
     if not File.exists?(path) do
-      download!()
+      download!(uv_version)
     end
 
     {_stream, status} =
@@ -170,13 +172,13 @@ defmodule Pythonx.Uv do
     status
   end
 
-  defp uv_path() do
-    Path.join([cache_dir(), "bin", "uv"])
+  defp uv_path(uv_version) do
+    Path.join([cache_dir(uv_version), "bin", "uv"])
   end
 
   @version Mix.Project.config()[:version]
 
-  defp cache_dir() do
+  defp cache_dir(uv_version) do
     base_dir =
       if dir = System.get_env("PYTHONX_CACHE_DIR") do
         Path.expand(dir)
@@ -184,17 +186,17 @@ defmodule Pythonx.Uv do
         :filename.basedir(:user_cache, "pythonx")
       end
 
-    Path.join([base_dir, @version, "uv", @uv_version])
+    Path.join([base_dir, @version, "uv", uv_version])
   end
 
-  defp download!() do
+  defp download!(uv_version) do
     {archive_type, archive_name} = archive_name()
 
-    url = "https://github.com/astral-sh/uv/releases/download/#{@uv_version}/#{archive_name}"
+    url = "https://github.com/astral-sh/uv/releases/download/#{uv_version}/#{archive_name}"
     Logger.debug("Downloading uv archive from #{url}")
     archive_binary = Pythonx.Utils.fetch_body!(url)
 
-    path = uv_path()
+    path = uv_path(uv_version)
     {:ok, uv_binary} = extract_executable(archive_type, archive_binary)
     File.mkdir_p!(Path.dirname(path))
     File.write!(path, uv_binary)

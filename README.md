@@ -130,6 +130,30 @@ config :pythonx, :uv_init,
   """
 ```
 
+Additionally, if you want to configure options that are passed to
+the `Pythonx.uv_init` functions, you can configure the `opts` parameter as well.
+```elixir
+import Config
+
+config :pythonx, :uv_init,
+  pyproject_toml: """
+  [project]
+  name = "project"
+  version = "0.0.0"
+  requires-python = "==3.13.*"
+  dependencies = [
+    "numpy==2.2.2"
+  ]
+  """,
+  opts: [uv_version: "0.7.21"]
+```
+
+
+The `opts` parameter currently accepts 2 options:
+* `:force` - if true, runs with empty project cache. Defaults to `false`.
+* `:uv_version` - select the version of the uv package manager to use. Defaults to `Pythonx.Uv.default_uv_version()`.
+
+
 With that, you can use `Pythonx.eval/2` and other APIs in your
 application. The downloads will happen at compile time, and the
 interpreter will get initialized automatically on boot. All necessary
