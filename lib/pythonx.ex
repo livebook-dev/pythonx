@@ -57,7 +57,7 @@ defmodule Pythonx do
     opts = Keyword.validate!(opts, force: false, uv_version: Pythonx.Uv.default_uv_version())
 
     Pythonx.Uv.fetch(pyproject_toml, false, opts)
-    Pythonx.Uv.init(pyproject_toml, false, opts)
+    Pythonx.Uv.init(pyproject_toml, false, Keyword.take(opts, [:uv_version]))
   end
 
   # Initializes the Python interpreter.
