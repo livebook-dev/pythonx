@@ -24,7 +24,8 @@ defmodule Pythonx.Application do
   # and we automatically initialize the interpreter on boot.
   uv_init_env = Application.compile_env(:pythonx, :uv_init)
   pyproject_toml = uv_init_env[:pyproject_toml]
-  opts = uv_init_env[:opts] || []
+  uv_version = uv_init_env[:uv_version] || Pythonx.Uv.default_uv_version()
+  opts = [uv_version: uv_version]
 
   if pyproject_toml do
     Pythonx.Uv.fetch(pyproject_toml, true, opts)
