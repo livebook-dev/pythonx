@@ -30,7 +30,8 @@ defmodule Pythonx.Uv do
       # We always use uv-managed Python, so the paths are predictable.
       if run!(["sync", "--python-preference", "only-managed"],
            cd: project_dir,
-           env: %{"UV_PYTHON_INSTALL_DIR" => python_install_dir}
+           env: %{"UV_PYTHON_INSTALL_DIR" => python_install_dir},
+           uv_version: opts[:uv_version]
          ) != 0 do
         _ = File.rm_rf(project_dir)
         raise "fetching Python and dependencies failed, see standard output for details"
