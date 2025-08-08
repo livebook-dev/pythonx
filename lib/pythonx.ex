@@ -48,6 +48,7 @@ defmodule Pythonx do
   ## Options
 
     * `:force` - if true, runs with empty project cache. Defaults to `false`.
+
     * `:uv_version` - select the version of the uv package manager to use.
       Defaults to `#{inspect(Pythonx.Uv.default_uv_version())}`.
 
