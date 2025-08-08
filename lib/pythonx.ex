@@ -12,7 +12,7 @@ defmodule Pythonx do
 
   @type encoder :: (term(), encoder() -> Object.t())
 
-  @doc ~S'''
+  @doc ~s'''
   Installs Python and dependencies using [uv](https://docs.astral.sh/uv)
   package manager and initializes the interpreter.
 
@@ -49,13 +49,16 @@ defmodule Pythonx do
 
     * `:force` - if true, runs with empty project cache. Defaults to `false`.
 
+    * `:uv_version` - select the version of the uv package manager to use.
+      Defaults to `#{inspect(Pythonx.Uv.default_uv_version())}`.
+
   '''
   @spec uv_init(String.t(), keyword()) :: :ok
   def uv_init(pyproject_toml, opts \\ []) when is_binary(pyproject_toml) and is_list(opts) do
-    opts = Keyword.validate!(opts, force: false)
+    opts = Keyword.validate!(opts, force: false, uv_version: Pythonx.Uv.default_uv_version())
 
     Pythonx.Uv.fetch(pyproject_toml, false, opts)
-    Pythonx.Uv.init(pyproject_toml, false)
+    Pythonx.Uv.init(pyproject_toml, false, Keyword.take(opts, [:uv_version]))
   end
 
   # Initializes the Python interpreter.

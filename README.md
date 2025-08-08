@@ -130,6 +130,16 @@ config :pythonx, :uv_init,
   """
 ```
 
+Additionally, you can configure a specific version of the uv package manager for Pythonx to use. This can impact the available Python versions.
+
+```elixir
+import Config
+
+config :pythonx, :uv_init,
+  ...,
+  uv_version: "0.7.21"
+```
+
 With that, you can use `Pythonx.eval/2` and other APIs in your
 application. The downloads will happen at compile time, and the
 interpreter will get initialized automatically on boot. All necessary
