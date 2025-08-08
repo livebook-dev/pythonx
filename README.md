@@ -130,20 +130,13 @@ config :pythonx, :uv_init,
   """
 ```
 
-Additionally, you may configure an explicit version of the uv package manager to use with Pythonx.
+Additionally, you can configure a specific version of the uv package manager for Pythonx to use. This can impact the available Python versions.
+
 ```elixir
 import Config
 
 config :pythonx, :uv_init,
-  pyproject_toml: """
-  [project]
-  name = "project"
-  version = "0.0.0"
-  requires-python = "==3.13.*"
-  dependencies = [
-    "numpy==2.2.2"
-  ]
-  """,
+  ...,
   uv_version: "0.7.21"
 ```
 
