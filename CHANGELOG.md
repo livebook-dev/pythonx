@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [v0.4.7](https://github.com/livebook-dev/pythonx/tree/v0.4.7) (2025-08-08)
+
+### Added
+
+- Configuration option to specify the uv version ([#30](https://github.com/livebook-dev/pythonx/pull/30))
+
+### Changed
+
+- Default uv version to 0.8.5 ([#30](https://github.com/livebook-dev/pythonx/pull/30))
+
 ## [v0.4.6](https://github.com/livebook-dev/pythonx/tree/v0.4.6) (2025-08-05)
 
 ### Changed
