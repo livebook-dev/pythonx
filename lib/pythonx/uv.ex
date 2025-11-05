@@ -28,7 +28,7 @@ defmodule Pythonx.Uv do
       File.write!(Path.join(project_dir, "pyproject.toml"), pyproject_toml)
 
       # We always use uv-managed Python, so the paths are predictable.
-      if run!(["sync", "--python-preference", "only-managed"],
+      if run!(["sync", "--managed-python", "--no-config"],
            cd: project_dir,
            env: %{"UV_PYTHON_INSTALL_DIR" => python_install_dir},
            uv_version: opts[:uv_version]
