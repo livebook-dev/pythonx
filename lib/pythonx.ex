@@ -8,8 +8,21 @@ defmodule Pythonx do
 
   @moduledoc readme_docs
 
+  defstruct [
+    :python_dl_path,
+    :python_home_path,
+    :python_executable_path,
+    :sys_paths
+  ]
+
   alias Pythonx.Object
 
+  @type python_config :: %__MODULE__{
+          python_dl_path: String.t(),
+          python_home_path: String.t(),
+          python_executable_path: String.t(),
+          sys_paths: [String.t()]
+        }
   @type encoder :: (term(), encoder() -> Object.t())
 
   @doc ~s'''
@@ -90,7 +103,7 @@ defmodule Pythonx do
   #     (`sys.path`). Defaults to `[]`.
   #
   @doc false
-  @spec init(String.t(), String.t(), keyword()) :: :ok
+  @spec init(String.t(), String.t(), String.t(), keyword()) :: :ok
   def init(python_dl_path, python_home_path, python_executable_path, opts \\ [])
       when is_binary(python_dl_path) and is_binary(python_home_path)
       when is_binary(python_executable_path) and is_list(opts) do
@@ -109,6 +122,16 @@ defmodule Pythonx do
     end
 
     Pythonx.NIF.init(python_dl_path, python_home_path, python_executable_path, opts[:sys_paths])
+  end
+
+  @spec init(python_config()) :: :ok
+  def init(%__MODULE__{
+        python_dl_path: python_dl_path,
+        python_home_path: python_home_path,
+        python_executable_path: python_executable_path,
+        sys_paths: sys_paths
+      }) do
+    init(python_dl_path, python_home_path, python_executable_path, sys_paths: sys_paths)
   end
 
   @doc ~S'''
