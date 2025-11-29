@@ -17,7 +17,9 @@ defmodule Pythonx do
 
   alias Pythonx.Object
 
-  @type python_config :: %__MODULE__{
+  @install_env_name "PYTHONX_FLAME_INIT_STATE"
+
+  @type init_state :: %__MODULE__{
           python_dl_path: String.t(),
           python_home_path: String.t(),
           python_executable_path: String.t(),
@@ -71,7 +73,47 @@ defmodule Pythonx do
     opts = Keyword.validate!(opts, force: false, uv_version: Pythonx.Uv.default_uv_version())
 
     Pythonx.Uv.fetch(pyproject_toml, false, opts)
-    Pythonx.Uv.init(pyproject_toml, false, Keyword.take(opts, [:uv_version]))
+    init_state = Pythonx.Uv.init(pyproject_toml, false, Keyword.take(opts, [:uv_version]))
+    :persistent_term.put(:pythonx_init_state, init_state)
+  end
+
+  @spec init_state() :: init_state()
+  defp init_state() do
+    :persistent_term.get(:pythonx_init_state)
+  end
+
+  @doc ~s'''
+  Fetches the pythonx init state from the system environment variable.
+  '''
+  @spec init_state_from_env() :: String.t() | nil
+  def init_state_from_env(), do: System.get_env(@install_env_name)
+
+  @doc ~s'''
+  Returns a map containing the environment variables required to initialize Pythonx.
+  '''
+  @spec install_env() :: map()
+  def install_env() do
+    init_state =
+      init_state()
+      |> :erlang.term_to_binary()
+      |> Base.encode64()
+
+    %{name: @install_env_name, value: init_state}
+  end
+
+  @doc ~s'''
+  Returns a list of paths to copy to the flame runner.
+  '''
+  @spec install_paths() :: list(String.t())
+  def install_paths() do
+    init_state = init_state()
+
+    [
+      init_state.python_dl_path,
+      init_state.python_executable_path
+    ] ++
+      init_state.sys_paths ++
+      Path.wildcard(Path.join(init_state.python_home_path, "**"), match_dot: true)
   end
 
   # Initializes the Python interpreter.
@@ -124,7 +166,7 @@ defmodule Pythonx do
     Pythonx.NIF.init(python_dl_path, python_home_path, python_executable_path, opts[:sys_paths])
   end
 
-  @spec init(python_config()) :: :ok
+  @spec init(init_state()) :: :ok
   def init(%__MODULE__{
         python_dl_path: python_dl_path,
         python_home_path: python_home_path,

@@ -66,7 +66,7 @@ defmodule Pythonx.Uv do
   Initializes the interpreter using Python and dependencies previously
   fetched by `fetch/3`.
   """
-  @spec init(String.t(), boolean()) :: Pythonx.python_config()
+  @spec init(String.t(), boolean()) :: Pythonx.init_state()
   def init(pyproject_toml, priv?, opts \\ []) do
     opts = Keyword.validate!(opts, uv_version: default_uv_version())
     project_dir = project_dir(pyproject_toml, priv?, opts[:uv_version])
@@ -95,7 +95,7 @@ defmodule Pythonx.Uv do
 
     root_dir = Path.join(python_install_dir(priv?, opts[:uv_version]), versioned_dir_name)
 
-    python_config =
+    init_state =
       case :os.type() do
         {:win32, _osname} ->
           # Note that we want the version-specific DLL, rather than the
@@ -156,8 +156,8 @@ defmodule Pythonx.Uv do
           }
       end
 
-    Pythonx.init(python_config)
-    python_config
+    Pythonx.init(init_state)
+    init_state
   end
 
   defp wildcard_one!(path) do
