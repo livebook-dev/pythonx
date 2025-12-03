@@ -8,23 +8,10 @@ defmodule Pythonx do
 
   @moduledoc readme_docs
 
-  defstruct [
-    :python_dl_path,
-    :python_home_path,
-    :python_executable_path,
-    :sys_paths
-  ]
-
   alias Pythonx.Object
 
-  @install_env_name "PYTHONX_FLAME_INIT_STATE"
+  @install_env_name "PYTHONX_INIT_STATE"
 
-  @type init_state :: %__MODULE__{
-          python_dl_path: String.t(),
-          python_home_path: String.t(),
-          python_executable_path: String.t(),
-          sys_paths: [String.t()]
-        }
   @type encoder :: (term(), encoder() -> Object.t())
 
   @doc ~s'''
@@ -73,47 +60,84 @@ defmodule Pythonx do
     opts = Keyword.validate!(opts, force: false, uv_version: Pythonx.Uv.default_uv_version())
 
     Pythonx.Uv.fetch(pyproject_toml, false, opts)
-    init_state = Pythonx.Uv.init(pyproject_toml, false, Keyword.take(opts, [:uv_version]))
+    install_paths = Pythonx.Uv.init(pyproject_toml, false, Keyword.take(opts, [:uv_version]))
+
+    init_state = %{
+      type: :uv_init,
+      pyproject_toml: pyproject_toml,
+      opts: Keyword.drop(opts, [:force]),
+      install_paths: install_paths
+    }
+
     :persistent_term.put(:pythonx_init_state, init_state)
   end
 
-  @spec init_state() :: init_state()
+  @spec init_state() :: map()
   defp init_state() do
     :persistent_term.get(:pythonx_init_state)
   end
 
-  @doc ~s'''
-  Fetches the pythonx init state from the system environment variable.
-  '''
   @spec init_state_from_env() :: String.t() | nil
-  def init_state_from_env(), do: System.get_env(@install_env_name)
+  defp init_state_from_env(), do: System.get_env(@install_env_name)
 
   @doc ~s'''
-  Returns a map containing the environment variables required to initialize Pythonx.
+  Returns a map with opaque environment variables to initialize Pythonx in
+  the same way as the current initialization.
+
+  When those environment variables are set, Pythonx is initialized on boot.
+
+  In particular, this can be used to make Pythonx initialize on `FLAME` nodes.
   '''
   @spec install_env() :: map()
   def install_env() do
+    init_state = init_state()
+
+    if init_state == nil do
+      raise "before calling Pythonx.install_env/0, you must initialize Pythonx"
+    end
+
     init_state =
-      init_state()
+      init_state
       |> :erlang.term_to_binary()
       |> Base.encode64()
 
-    %{name: @install_env_name, value: init_state}
+    %{@install_env_name => init_state}
   end
 
   @doc ~s'''
-  Returns a list of paths to copy to the flame runner.
+  Returns a list of paths that `install_env/0` initialization depends on.
+
+  In particular, this can be used to make Pythonx initialize on `FLAME` nodes.
   '''
   @spec install_paths() :: list(String.t())
   def install_paths() do
     init_state = init_state()
 
-    [
-      init_state.python_dl_path,
-      init_state.python_executable_path
-    ] ++
-      init_state.sys_paths ++
-      Path.wildcard(Path.join(init_state.python_home_path, "**"), match_dot: true)
+    if init_state == nil do
+      raise "before calling Pythonx.install_paths/0, you must initialize Pythonx"
+    end
+
+    init_state.install_paths
+  end
+
+  @doc false
+  def maybe_init_from_env() do
+    case init_state_from_env() do
+      nil ->
+        :noop
+
+      init_state_env_value ->
+        %{
+          type: :uv_init,
+          pyproject_toml: pyproject_toml,
+          opts: opts
+        } =
+          init_state_env_value
+          |> Base.decode64!()
+          |> :erlang.binary_to_term()
+
+        uv_init(pyproject_toml, opts)
+    end
   end
 
   # Initializes the Python interpreter.
@@ -164,16 +188,6 @@ defmodule Pythonx do
     end
 
     Pythonx.NIF.init(python_dl_path, python_home_path, python_executable_path, opts[:sys_paths])
-  end
-
-  @spec init(init_state()) :: :ok
-  def init(%__MODULE__{
-        python_dl_path: python_dl_path,
-        python_home_path: python_home_path,
-        python_executable_path: python_executable_path,
-        sys_paths: sys_paths
-      }) do
-    init(python_dl_path, python_home_path, python_executable_path, sys_paths: sys_paths)
   end
 
   @doc ~S'''

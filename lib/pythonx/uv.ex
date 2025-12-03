@@ -66,7 +66,7 @@ defmodule Pythonx.Uv do
   Initializes the interpreter using Python and dependencies previously
   fetched by `fetch/3`.
   """
-  @spec init(String.t(), boolean()) :: Pythonx.init_state()
+  @spec init(String.t(), boolean()) :: list(String.t())
   def init(pyproject_toml, priv?, opts \\ []) do
     opts = Keyword.validate!(opts, uv_version: default_uv_version())
     project_dir = project_dir(pyproject_toml, priv?, opts[:uv_version])
@@ -95,69 +95,61 @@ defmodule Pythonx.Uv do
 
     root_dir = Path.join(python_install_dir(priv?, opts[:uv_version]), versioned_dir_name)
 
-    init_state =
-      case :os.type() do
-        {:win32, _osname} ->
-          # Note that we want the version-specific DLL, rather than the
-          # "forwarder DLL" python3.dll, otherwise symbols cannot be
-          # found directly.
-          python_dl_path =
-            root_dir
-            |> Path.join("python3?*.dll")
-            |> wildcard_one!()
-            |> make_windows_slashes()
+    case :os.type() do
+      {:win32, _osname} ->
+        # Note that we want the version-specific DLL, rather than the
+        # "forwarder DLL" python3.dll, otherwise symbols cannot be
+        # found directly.
+        python_dl_path =
+          root_dir
+          |> Path.join("python3?*.dll")
+          |> wildcard_one!()
+          |> make_windows_slashes()
 
-          python_home_path = make_windows_slashes(root_dir)
+        python_home_path = make_windows_slashes(root_dir)
 
-          python_executable_path =
-            project_dir
-            |> Path.join(".venv/Scripts/python.exe")
-            |> make_windows_slashes()
+        python_executable_path =
+          project_dir
+          |> Path.join(".venv/Scripts/python.exe")
+          |> make_windows_slashes()
 
-          venv_packages_path =
-            project_dir
-            |> Path.join(".venv/Lib/site-packages")
-            |> make_windows_slashes()
+        venv_packages_path =
+          project_dir
+          |> Path.join(".venv/Lib/site-packages")
+          |> make_windows_slashes()
 
-          %Pythonx{
-            python_dl_path: python_dl_path,
-            python_home_path: python_home_path,
-            python_executable_path: python_executable_path,
-            sys_paths: [venv_packages_path]
-          }
+        Pythonx.init(python_dl_path, python_home_path, python_executable_path,
+          sys_paths: [venv_packages_path]
+        )
 
-        {:unix, osname} ->
-          dl_extension =
-            case osname do
-              :darwin -> ".dylib"
-              :linux -> ".so"
-            end
+      {:unix, osname} ->
+        dl_extension =
+          case osname do
+            :darwin -> ".dylib"
+            :linux -> ".so"
+          end
 
-          python_dl_path =
-            root_dir
-            |> Path.join("lib/libpython3.*" <> dl_extension)
-            |> wildcard_one!()
-            |> Path.expand()
+        python_dl_path =
+          root_dir
+          |> Path.join("lib/libpython3.*" <> dl_extension)
+          |> wildcard_one!()
+          |> Path.expand()
 
-          python_home_path = root_dir
+        python_home_path = root_dir
 
-          python_executable_path = Path.join(project_dir, ".venv/bin/python")
+        python_executable_path = Path.join(project_dir, ".venv/bin/python")
 
-          venv_packages_path =
-            project_dir
-            |> Path.join(".venv/lib/python3*/site-packages")
-            |> wildcard_one!()
+        venv_packages_path =
+          project_dir
+          |> Path.join(".venv/lib/python3*/site-packages")
+          |> wildcard_one!()
 
-          %Pythonx{
-            python_dl_path: python_dl_path,
-            python_home_path: python_home_path,
-            python_executable_path: python_executable_path,
-            sys_paths: [venv_packages_path]
-          }
-      end
+        Pythonx.init(python_dl_path, python_home_path, python_executable_path,
+          sys_paths: [venv_packages_path]
+        )
+    end
 
-    Pythonx.init(init_state)
-    init_state
+    [root_dir, project_dir]
   end
 
   defp wildcard_one!(path) do
