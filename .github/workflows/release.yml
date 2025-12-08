@@ -60,7 +60,7 @@ jobs:
             cache/*.sha256
 
   macos:
-    runs-on: macos-13
+    runs-on: macos-14
     env:
       MIX_ENV: prod
       ELIXIR_VERSION: "1.15.3"
