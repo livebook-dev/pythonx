@@ -31,7 +31,7 @@ defmodule Pythonx.Application do
     Pythonx.Uv.fetch(pyproject_toml, true, opts)
     defp maybe_uv_init(), do: Pythonx.Uv.init(unquote(pyproject_toml), true, unquote(opts))
   else
-    defp maybe_uv_init(), do: :noop
+    defp maybe_uv_init(), do: Pythonx.maybe_init_from_env()
   end
 
   defp enable_sigchld() do

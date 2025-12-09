@@ -10,6 +10,8 @@ defmodule Pythonx do
 
   alias Pythonx.Object
 
+  @install_env_name "PYTHONX_INIT_STATE"
+
   @type encoder :: (term(), encoder() -> Object.t())
 
   @doc ~s'''
@@ -58,7 +60,84 @@ defmodule Pythonx do
     opts = Keyword.validate!(opts, force: false, uv_version: Pythonx.Uv.default_uv_version())
 
     Pythonx.Uv.fetch(pyproject_toml, false, opts)
-    Pythonx.Uv.init(pyproject_toml, false, Keyword.take(opts, [:uv_version]))
+    install_paths = Pythonx.Uv.init(pyproject_toml, false, Keyword.take(opts, [:uv_version]))
+
+    init_state = %{
+      type: :uv_init,
+      pyproject_toml: pyproject_toml,
+      opts: Keyword.drop(opts, [:force]),
+      install_paths: install_paths
+    }
+
+    :persistent_term.put(:pythonx_init_state, init_state)
+  end
+
+  @spec init_state() :: map()
+  defp init_state() do
+    :persistent_term.get(:pythonx_init_state)
+  end
+
+  @spec init_state_from_env() :: String.t() | nil
+  defp init_state_from_env(), do: System.get_env(@install_env_name)
+
+  @doc ~s'''
+  Returns a map with opaque environment variables to initialize Pythonx in
+  the same way as the current initialization.
+
+  When those environment variables are set, Pythonx is initialized on boot.
+
+  In particular, this can be used to make Pythonx initialize on `FLAME` nodes.
+  '''
+  @spec install_env() :: map()
+  def install_env() do
+    init_state = init_state()
+
+    if init_state == nil do
+      raise "before calling Pythonx.install_env/0, you must initialize Pythonx"
+    end
+
+    init_state =
+      init_state
+      |> :erlang.term_to_binary()
+      |> Base.encode64()
+
+    %{@install_env_name => init_state}
+  end
+
+  @doc ~s'''
+  Returns a list of paths that `install_env/0` initialization depends on.
+
+  In particular, this can be used to make Pythonx initialize on `FLAME` nodes.
+  '''
+  @spec install_paths() :: list(String.t())
+  def install_paths() do
+    init_state = init_state()
+
+    if init_state == nil do
+      raise "before calling Pythonx.install_paths/0, you must initialize Pythonx"
+    end
+
+    init_state.install_paths
+  end
+
+  @doc false
+  def maybe_init_from_env() do
+    case init_state_from_env() do
+      nil ->
+        :noop
+
+      init_state_env_value ->
+        %{
+          type: :uv_init,
+          pyproject_toml: pyproject_toml,
+          opts: opts
+        } =
+          init_state_env_value
+          |> Base.decode64!()
+          |> :erlang.binary_to_term()
+
+        uv_init(pyproject_toml, opts)
+    end
   end
 
   # Initializes the Python interpreter.
@@ -90,7 +169,7 @@ defmodule Pythonx do
   #     (`sys.path`). Defaults to `[]`.
   #
   @doc false
-  @spec init(String.t(), String.t(), keyword()) :: :ok
+  @spec init(String.t(), String.t(), String.t(), keyword()) :: :ok
   def init(python_dl_path, python_home_path, python_executable_path, opts \\ [])
       when is_binary(python_dl_path) and is_binary(python_home_path)
       when is_binary(python_executable_path) and is_list(opts) do

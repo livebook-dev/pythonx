@@ -66,7 +66,7 @@ defmodule Pythonx.Uv do
   Initializes the interpreter using Python and dependencies previously
   fetched by `fetch/3`.
   """
-  @spec init(String.t(), boolean()) :: :ok
+  @spec init(String.t(), boolean()) :: list(String.t())
   def init(pyproject_toml, priv?, opts \\ []) do
     opts = Keyword.validate!(opts, uv_version: default_uv_version())
     project_dir = project_dir(pyproject_toml, priv?, opts[:uv_version])
@@ -148,6 +148,8 @@ defmodule Pythonx.Uv do
           sys_paths: [venv_packages_path]
         )
     end
+
+    [root_dir, project_dir]
   end
 
   defp wildcard_one!(path) do
