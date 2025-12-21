@@ -31,6 +31,7 @@ defmodule Pythonx.NIF do
   def list_set_item(_object, _index, _value), do: err!()
   def set_new(), do: err!()
   def set_add(_object, _key), do: err!()
+  def pid_new(_pid), do: err!()
   def object_repr(_object), do: err!()
   def format_exception(_error), do: err!()
   def decode_once(_object), do: err!()
