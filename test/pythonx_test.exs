@@ -59,6 +59,10 @@ defmodule PythonxTest do
       assert repr(Pythonx.encode!(MapSet.new([1]))) == "{1}"
     end
 
+    test "pid" do
+      assert repr(Pythonx.encode!(IEx.Helpers.pid(0, 1, 2))) == "<pythonx.PID>"
+    end
+
     test "identity for Pythonx.Object" do
       object = Pythonx.encode!(1)
       assert Pythonx.encode!(object) == object
@@ -130,6 +134,12 @@ defmodule PythonxTest do
     test "mapset" do
       assert Pythonx.decode(eval_result("set({1})")) == MapSet.new([1])
       assert Pythonx.decode(eval_result("frozenset({1})")) == MapSet.new([1])
+    end
+
+    test "pid" do
+      pid = IEx.Helpers.pid(0, 1, 2)
+      assert {result, %{}} = Pythonx.eval("pid", %{"pid" => pid})
+      assert Pythonx.decode(result) == pid
     end
 
     test "identity for other objects" do
@@ -446,6 +456,24 @@ defmodule PythonxTest do
         end)
 
       assert diagnostics == []
+    end
+  end
+
+  describe "python API" do
+    test "pythonx.send sends message to the given pid" do
+      pid = self()
+
+      assert {_result, %{}} =
+               Pythonx.eval(
+                 """
+                 import pythonx
+                 pythonx.send_tagged_object(pid, "message_from_python", ("hello", 1))
+                 """,
+                 %{"pid" => pid}
+               )
+
+      assert_receive {:message_from_python, %Pythonx.Object{} = object}
+      assert repr(object) == "('hello', 1)"
     end
   end
 

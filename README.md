@@ -150,6 +150,46 @@ Note that currently the `~PY` sigil does not work as part of Mix project
 code. This limitation is intentional, since in actual applications it
 is preferable to manage the Python globals explicitly.
 
+## Python API
+
+Pythonx provides a Python module named `pythonx` with extra interoperability
+features.
+
+### `pythonx.send_tagged_object(pid, tag, object)`
+
+Sends a Python object to an Elixir process identified by `pid`.
+
+The Elixir process receives the message as a `{tag, object}` tuple,
+where `tag` is an atom and `object` is a `Pythonx.Object` struct.
+
+> #### Long-running evaluation {: .warning}
+>
+> If you are sending messages from Python to Elixir, it likely means
+> you have a long-running Python evaluation. If the evaluation holds
+> onto GIL for long, you should make sure to only do it from a single
+> Elixir process to avoid bottlenecks. For more details see the
+> "Concurrency" notes in `Pythonx.eval/3`.
+
+> #### Decoding {: .warning}
+>
+> The Elixir process receives a `Pythonx.Object`, which you may want
+> to decode right away. Keep in mind that `Pythonx.decode/1` requires
+> GIL, so if the ongoing evaluation holds onto GIL for long, decoding
+> itself may be blocked.
+
+**Parameters:**
+
+- `pid` (`pythonx.PID`) – Opaque PID object, passed into the evaluation.
+- `tag` (`str`) – A tag appearning as atom in the Elixir message.
+- `object` (`Any`) – Any Python object to be sent as the message.
+
+### `pythonx.PID`
+
+Opaque Python object that represents an Elixir PID.
+
+This object cannot be created within Python, it needs to be passed
+into the evaluation as part of globals.
+
 ## How it works
 
 [CPython](https://github.com/python/cpython) (the reference

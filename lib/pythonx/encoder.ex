@@ -196,3 +196,9 @@ defimpl Pythonx.Encoder, for: MapSet do
     set
   end
 end
+
+defimpl Pythonx.Encoder, for: PID do
+  def encode(term, _encoder) do
+    Pythonx.NIF.pid_new(term)
+  end
+end
