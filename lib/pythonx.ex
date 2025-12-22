@@ -454,6 +454,7 @@ defmodule Pythonx do
     * `dict`
     * `set`
     * `frozenset`
+    * `pythonx.PID`
 
   For all other types `Pythonx.Object` is returned.
 

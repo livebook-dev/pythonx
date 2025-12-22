@@ -1036,6 +1036,31 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
                         std::make_tuple(atoms::map_set, fine::Term(items)));
   }
 
+  auto py_pythonx = PyImport_AddModule("pythonx");
+  raise_if_failed(env, py_pythonx);
+
+  auto py_PID = PyObject_GetAttrString(py_pythonx, "PID");
+  raise_if_failed(env, py_PID);
+  auto py_PID_guard = PyDecRefGuard(py_PID);
+
+  auto is_pid = PyObject_IsInstance(py_object, py_PID);
+  raise_if_failed(env, is_pid);
+  if (is_pid) {
+    auto py_pid_bytes = PyObject_GetAttrString(py_object, "bytes");
+    raise_if_failed(env, py_pid_bytes);
+    auto py_pid_bytes_guard = PyDecRefGuard(py_pid_bytes);
+
+    Py_ssize_t size;
+    char *pid_bytes;
+    auto result = PyBytes_AsStringAndSize(py_pid_bytes, &pid_bytes, &size);
+    raise_if_failed(env, result);
+
+    auto pid = ErlNifPid{};
+    std::memcpy(&pid, pid_bytes, sizeof(ErlNifPid));
+
+    return fine::encode(env, pid);
+  }
+
   // None of the built-ins, return %Pythonx.Object{} as is
   return fine::encode(env, ex_object);
 }

@@ -136,6 +136,12 @@ defmodule PythonxTest do
       assert Pythonx.decode(eval_result("frozenset({1})")) == MapSet.new([1])
     end
 
+    test "pid" do
+      pid = IEx.Helpers.pid(0, 1, 2)
+      assert {result, %{}} = Pythonx.eval("pid", %{"pid" => pid})
+      assert Pythonx.decode(result) == pid
+    end
+
     test "identity for other objects" do
       assert repr(Pythonx.decode(eval_result("complex(1)"))) == "(1+0j)"
     end
