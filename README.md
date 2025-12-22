@@ -173,7 +173,7 @@ where `tag` is an atom and `object` is a `Pythonx.Object` struct.
 > #### Decoding {: .warning}
 >
 > The Elixir process receives a `Pythonx.Object`, which you may want
-> to decode right away. Keep in mind that `Pythonx.decode/2` requires
+> to decode right away. Keep in mind that `Pythonx.decode/1` requires
 > GIL, so if the ongoing evaluation holds onto GIL for long, decoding
 > itself may be blocked.
 
