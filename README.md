@@ -162,6 +162,21 @@ Sends a Python object to an Elixir process identified by `pid`.
 The Elixir process receives the message as a `{tag, object}` tuple,
 where `tag` is an atom and `object` is a `Pythonx.Object` struct.
 
+> #### Long-running evaluation {: .warning}
+>
+> If you are sending messages from Python to Elixir, it likely means
+> you have a long-running Python evaluation. If the evaluation holds
+> onto GIL for long, you should make sure to only do it from a single
+> Elixir process to avoid bottlenecks. For more details see the
+> "Concurrency" notes in `Pythonx.eval/3`.
+
+> #### Decoding {: .warning}
+>
+> The Elixir process receives a `Pythonx.Object`, which you may want
+> to decode right away. Keep in mind that `Pythonx.decode/2` requires
+> GIL, so if the ongoing evaluation holds onto GIL for long, decoding
+> itself may be blocked.
+
 **Parameters:**
 
 - `pid` (`pythonx.PID`) – Opaque PID object, passed into the evaluation.
