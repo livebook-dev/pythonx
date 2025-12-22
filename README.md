@@ -155,7 +155,7 @@ is preferable to manage the Python globals explicitly.
 Pythonx provides a Python module named `pythonx` with extra interoperability
 features.
 
-### `pythonx.send(pid, tag, object)`
+### `pythonx.send_tagged_object(pid, tag, object)`
 
 Sends a Python object to an Elixir process identified by `pid`.
 

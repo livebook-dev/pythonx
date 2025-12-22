@@ -15,9 +15,10 @@
 extern "C" void pythonx_handle_io_write(const char *message,
                                         const char *eval_info_bytes, bool type);
 
-extern "C" void pythonx_handle_send(const char *pid_bytes, const char *tag,
-                                    pythonx::python::PyObjectPtr *py_object,
-                                    const char *eval_info_bytes);
+extern "C" void
+pythonx_handle_send_tagged_object(const char *pid_bytes, const char *tag,
+                                  pythonx::python::PyObjectPtr *py_object,
+                                  const char *eval_info_bytes);
 
 namespace pythonx {
 
@@ -396,9 +397,9 @@ pythonx_handle_io_write = ctypes.CFUNCTYPE(
   None, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_bool
 )(pythonx_handle_io_write_ptr)
 
-pythonx_handle_send = ctypes.CFUNCTYPE(
+pythonx_handle_send_tagged_object = ctypes.CFUNCTYPE(
   None, ctypes.c_char_p, ctypes.c_char_p, ctypes.py_object, ctypes.c_char_p
-)(pythonx_handle_send_ptr)
+)(pythonx_handle_send_tagged_object_ptr)
 
 
 def get_eval_info_bytes():
@@ -452,10 +453,10 @@ class PID:
 
 pythonx.PID = PID
 
-def send(pid, tag, object):
-  pythonx_handle_send(pid.bytes, tag.encode("utf-8"), object, get_eval_info_bytes())
+def send_tagged_object(pid, tag, object):
+  pythonx_handle_send_tagged_object(pid.bytes, tag.encode("utf-8"), object, get_eval_info_bytes())
 
-pythonx.send = send
+pythonx.send_tagged_object = send_tagged_object
 
 sys.modules["pythonx"] = pythonx
 )";
@@ -481,15 +482,15 @@ sys.modules["pythonx"] = pythonx
                                             "pythonx_handle_io_write_ptr",
                                             py_pythonx_handle_io_write_ptr));
 
-  auto py_pythonx_handle_send_ptr = PyLong_FromUnsignedLongLong(
-      reinterpret_cast<uintptr_t>(pythonx_handle_send));
-  raise_if_failed(env, py_pythonx_handle_send_ptr);
-  auto py_pythonx_handle_send_ptr_guard =
-      PyDecRefGuard(py_pythonx_handle_send_ptr);
+  auto py_pythonx_handle_send_tagged_object_ptr = PyLong_FromUnsignedLongLong(
+      reinterpret_cast<uintptr_t>(pythonx_handle_send_tagged_object));
+  raise_if_failed(env, py_pythonx_handle_send_tagged_object_ptr);
+  auto py_pythonx_handle_send_tagged_object_ptr_guard =
+      PyDecRefGuard(py_pythonx_handle_send_tagged_object_ptr);
 
-  raise_if_failed(env,
-                  PyDict_SetItemString(py_globals, "pythonx_handle_send_ptr",
-                                       py_pythonx_handle_send_ptr));
+  raise_if_failed(env, PyDict_SetItemString(
+                           py_globals, "pythonx_handle_send_tagged_object_ptr",
+                           py_pythonx_handle_send_tagged_object_ptr));
 
   auto py_exec_args = PyTuple_Pack(2, py_code, py_globals);
   raise_if_failed(env, py_exec_args);
@@ -1491,9 +1492,10 @@ extern "C" void pythonx_handle_io_write(const char *message,
   }
 }
 
-extern "C" void pythonx_handle_send(const char *pid_bytes, const char *tag,
-                                    pythonx::python::PyObjectPtr *py_object,
-                                    const char *eval_info_bytes) {
+extern "C" void
+pythonx_handle_send_tagged_object(const char *pid_bytes, const char *tag,
+                                  pythonx::python::PyObjectPtr *py_object,
+                                  const char *eval_info_bytes) {
   auto eval_info = eval_info_from_bytes(eval_info_bytes);
 
   auto caller_env = get_caller_env(eval_info);

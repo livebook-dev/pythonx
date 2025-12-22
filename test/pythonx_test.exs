@@ -461,7 +461,7 @@ defmodule PythonxTest do
                Pythonx.eval(
                  """
                  import pythonx
-                 pythonx.send(pid, "message_from_python", ("hello", 1))
+                 pythonx.send_tagged_object(pid, "message_from_python", ("hello", 1))
                  """,
                  %{"pid" => pid}
                )
