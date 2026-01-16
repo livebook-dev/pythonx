@@ -45,6 +45,23 @@ defmodule Pythonx do
       ]
       """)
 
+  In some environments, you may need to pass additional flags to the `uv sync`
+  command. For example, in corporate environments with strict security policies,
+  you might need to use native TLS:
+
+      Pythonx.uv_init(
+        """
+        [project]
+        name = "project"
+        version = "0.0.0"
+        requires-python = "==3.13.*"
+        dependencies = [
+          "numpy==2.2.2"
+        ]
+        """,
+        native_tls: true
+      )
+
   For more configuration options, refer to the [uv documentation](https://docs.astral.sh/uv/concepts/projects/dependencies/).
 
   ## Options
@@ -54,10 +71,14 @@ defmodule Pythonx do
     * `:uv_version` - select the version of the uv package manager to use.
       Defaults to `#{inspect(Pythonx.Uv.default_uv_version())}`.
 
+    * `:native_tls` - if true, uses the system's native TLS implementation instead
+      of vendored rustls. This is useful in corporate environments where the system
+      certificate store must be used. Defaults to `false`.
+
   '''
   @spec uv_init(String.t(), keyword()) :: :ok
   def uv_init(pyproject_toml, opts \\ []) when is_binary(pyproject_toml) and is_list(opts) do
-    opts = Keyword.validate!(opts, force: false, uv_version: Pythonx.Uv.default_uv_version())
+    opts = Keyword.validate!(opts, force: false, uv_version: Pythonx.Uv.default_uv_version(), native_tls: false)
 
     Pythonx.Uv.fetch(pyproject_toml, false, opts)
     install_paths = Pythonx.Uv.init(pyproject_toml, false, Keyword.take(opts, [:uv_version]))

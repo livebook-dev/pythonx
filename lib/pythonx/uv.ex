@@ -10,7 +10,7 @@ defmodule Pythonx.Uv do
   """
   @spec fetch(String.t(), boolean(), keyword()) :: :ok
   def fetch(pyproject_toml, priv?, opts \\ []) do
-    opts = Keyword.validate!(opts, force: false, uv_version: default_uv_version())
+    opts = Keyword.validate!(opts, force: false, uv_version: default_uv_version(), native_tls: false)
 
     project_dir = project_dir(pyproject_toml, priv?, opts[:uv_version])
     python_install_dir = python_install_dir(priv?, opts[:uv_version])
@@ -28,7 +28,10 @@ defmodule Pythonx.Uv do
       File.write!(Path.join(project_dir, "pyproject.toml"), pyproject_toml)
 
       # We always use uv-managed Python, so the paths are predictable.
-      if run!(["sync", "--managed-python", "--no-config"],
+      base_args = ["sync", "--managed-python", "--no-config"]
+      uv_args = if opts[:native_tls], do: base_args ++ ["--native-tls"], else: base_args
+
+      if run!(uv_args,
            cd: project_dir,
            env: %{"UV_PYTHON_INSTALL_DIR" => python_install_dir},
            uv_version: opts[:uv_version]
