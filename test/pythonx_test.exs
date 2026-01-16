@@ -477,56 +477,6 @@ defmodule PythonxTest do
     end
   end
 
-  describe "uv_init/2 native_tls option" do
-    test "accepts native_tls option" do
-      # Test that native_tls is recognized as a valid option
-      opts = Keyword.validate!([native_tls: true, force: false],
-                               force: false,
-                               uv_version: Pythonx.Uv.default_uv_version(),
-                               native_tls: false)
-
-      assert opts[:native_tls] == true
-      assert opts[:force] == false
-    end
-
-    test "defaults native_tls to false" do
-      opts = Keyword.validate!([],
-                               force: false,
-                               uv_version: Pythonx.Uv.default_uv_version(),
-                               native_tls: false)
-
-      assert opts[:native_tls] == false
-    end
-
-    test "native_tls true adds --native-tls flag to uv command" do
-      # Simulate how Pythonx.Uv.fetch constructs the uv command arguments
-      base_args = ["sync", "--managed-python", "--no-config"]
-      native_tls = true
-
-      uv_args = if native_tls, do: base_args ++ ["--native-tls"], else: base_args
-
-      assert uv_args == ["sync", "--managed-python", "--no-config", "--native-tls"]
-    end
-
-    test "native_tls false does not add --native-tls flag" do
-      base_args = ["sync", "--managed-python", "--no-config"]
-      native_tls = false
-
-      uv_args = if native_tls, do: base_args ++ ["--native-tls"], else: base_args
-
-      assert uv_args == ["sync", "--managed-python", "--no-config"]
-    end
-
-    test "raises error for unknown options" do
-      assert_raise ArgumentError, ~r/unknown keys/, fn ->
-        Keyword.validate!([unknown_option: true],
-                          force: false,
-                          uv_version: Pythonx.Uv.default_uv_version(),
-                          native_tls: false)
-      end
-    end
-  end
-
   defp repr(object) do
     assert %Pythonx.Object{} = object
 

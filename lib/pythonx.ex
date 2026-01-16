@@ -45,23 +45,6 @@ defmodule Pythonx do
       ]
       """)
 
-  In some environments, you may need to pass additional flags to the `uv sync`
-  command. For example, in corporate environments with strict security policies,
-  you might need to use native TLS:
-
-      Pythonx.uv_init(
-        """
-        [project]
-        name = "project"
-        version = "0.0.0"
-        requires-python = "==3.13.*"
-        dependencies = [
-          "numpy==2.2.2"
-        ]
-        """,
-        native_tls: true
-      )
-
   For more configuration options, refer to the [uv documentation](https://docs.astral.sh/uv/concepts/projects/dependencies/).
 
   ## Options
