@@ -61,7 +61,12 @@ defmodule Pythonx do
   '''
   @spec uv_init(String.t(), keyword()) :: :ok
   def uv_init(pyproject_toml, opts \\ []) when is_binary(pyproject_toml) and is_list(opts) do
-    opts = Keyword.validate!(opts, force: false, uv_version: Pythonx.Uv.default_uv_version(), native_tls: false)
+    opts =
+      Keyword.validate!(opts,
+        force: false,
+        uv_version: Pythonx.Uv.default_uv_version(),
+        native_tls: false
+      )
 
     Pythonx.Uv.fetch(pyproject_toml, false, opts)
     install_paths = Pythonx.Uv.init(pyproject_toml, false, Keyword.take(opts, [:uv_version]))
