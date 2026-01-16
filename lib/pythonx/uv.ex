@@ -10,7 +10,8 @@ defmodule Pythonx.Uv do
   """
   @spec fetch(String.t(), boolean(), keyword()) :: :ok
   def fetch(pyproject_toml, priv?, opts \\ []) do
-    opts = Keyword.validate!(opts, force: false, uv_version: default_uv_version(), native_tls: false)
+    opts =
+      Keyword.validate!(opts, force: false, uv_version: default_uv_version(), native_tls: false)
 
     project_dir = project_dir(pyproject_toml, priv?, opts[:uv_version])
     python_install_dir = python_install_dir(priv?, opts[:uv_version])
