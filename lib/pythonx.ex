@@ -54,10 +54,19 @@ defmodule Pythonx do
     * `:uv_version` - select the version of the uv package manager to use.
       Defaults to `#{inspect(Pythonx.Uv.default_uv_version())}`.
 
+    * `:native_tls` - if true, uses the system's native TLS implementation instead
+      of vendored rustls. This is useful in corporate environments where the system
+      certificate store must be used. Defaults to `false`.
+
   '''
   @spec uv_init(String.t(), keyword()) :: :ok
   def uv_init(pyproject_toml, opts \\ []) when is_binary(pyproject_toml) and is_list(opts) do
-    opts = Keyword.validate!(opts, force: false, uv_version: Pythonx.Uv.default_uv_version())
+    opts =
+      Keyword.validate!(opts,
+        force: false,
+        uv_version: Pythonx.Uv.default_uv_version(),
+        native_tls: false
+      )
 
     Pythonx.Uv.fetch(pyproject_toml, false, opts)
     install_paths = Pythonx.Uv.init(pyproject_toml, false, Keyword.take(opts, [:uv_version]))
