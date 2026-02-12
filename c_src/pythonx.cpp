@@ -381,8 +381,8 @@ fine::Ok<> init(ErlNifEnv *env, std::string python_dl_path,
 
   // We set env vars to match Elixir at the time of initialization.
   // Note that the interpreter initializes its env vars from the OS
-  // process, however we also want to account for env vars set
-  // dynamically, for example via System.put_env/2.
+  // process, however we want to account for changes to env vars
+  // such as `System.put_env/2`.
 
   auto py_os = PyImport_AddModule("os");
   raise_if_failed(env, py_os);
