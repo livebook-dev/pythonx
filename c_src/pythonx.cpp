@@ -382,20 +382,19 @@ fine::Ok<> init(ErlNifEnv *env, std::string python_dl_path,
   // We set env vars to match Elixir at the time of initialization.
   // Note that the interpreter initializes its env vars from the OS
   // process, however we want to account for changes to env vars
-  // such as `System.put_env/2`.
+  // such as `System.put_env/2` and `System.delete_env/1`.
+  //
+  // On Windows, there are special env vars, which can be read, but
+  // cannot be set, so we don't want to loop over all envs and set
+  // them. Instead, we want to diff the env vars and only mirror the
+  // changes. Doing all of that with C API would be complex, so we
+  // build a dict with the env vars, and then diff it in the eval
+  // below (there is no need to overoptimise this, since init runs
+  // only once, and we already eval anyway).
 
-  auto py_os = PyImport_AddModule("os");
-  raise_if_failed(env, py_os);
-
-  auto py_os_environ = PyObject_GetAttrString(py_os, "environ");
-  raise_if_failed(env, py_os_environ);
-  auto py_os_environ_guard = PyDecRefGuard(py_os_environ);
-
-  auto py_os_environ_clear = PyObject_GetAttrString(py_os_environ, "clear");
-  raise_if_failed(env, py_os_environ_clear);
-  auto py_os_environ_clear_guard = PyDecRefGuard(py_os_environ_clear);
-  auto result = PyObject_CallNoArgs(py_os_environ_clear);
-  raise_if_failed(env, result);
+  auto py_envs = PyDict_New();
+  raise_if_failed(env, py_envs);
+  auto py_envs_guard = PyDecRefGuard(py_envs);
 
   for (const auto &[key, value] : envs) {
     auto py_key = PyUnicode_FromStringAndSize(
@@ -407,7 +406,7 @@ fine::Ok<> init(ErlNifEnv *env, std::string python_dl_path,
     raise_if_failed(env, py_value);
     auto py_value_guard = PyDecRefGuard(py_value);
 
-    auto result = PyObject_SetItem(py_os_environ, py_key, py_value);
+    auto result = PyDict_SetItem(py_envs, py_key, py_value);
     raise_if_failed(env, result);
   }
 
@@ -426,6 +425,20 @@ import sys
 import inspect
 import types
 import sys
+import os
+
+
+# Prepare env vars
+
+to_remove = [key for key in os.environ if key not in envs]
+
+for key in to_remove:
+  os.environ.pop(key, None)
+
+for key, value in envs.items():
+  if os.environ.get(key, None) != value:
+    os.environ[key] = value
+
 
 pythonx_handle_io_write = ctypes.CFUNCTYPE(
   None, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_bool
@@ -525,6 +538,8 @@ sys.modules["pythonx"] = pythonx
   raise_if_failed(env, PyDict_SetItemString(
                            py_globals, "pythonx_handle_send_tagged_object_ptr",
                            py_pythonx_handle_send_tagged_object_ptr));
+
+  raise_if_failed(env, PyDict_SetItemString(py_globals, "envs", py_envs));
 
   auto py_exec_args = PyTuple_Pack(2, py_code, py_globals);
   raise_if_failed(env, py_exec_args);
