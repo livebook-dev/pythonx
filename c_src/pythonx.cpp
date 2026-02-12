@@ -9,6 +9,7 @@
 #include <string>
 #include <thread>
 #include <tuple>
+#include <unordered_map>
 
 #include "python.hpp"
 
@@ -287,7 +288,8 @@ ERL_NIF_TERM py_str_to_binary_term(ErlNifEnv *env, PyObjectPtr py_object) {
 fine::Ok<> init(ErlNifEnv *env, std::string python_dl_path,
                 ErlNifBinary python_home_path,
                 ErlNifBinary python_executable_path,
-                std::vector<ErlNifBinary> sys_paths) {
+                std::vector<ErlNifBinary> sys_paths,
+                std::vector<std::tuple<ErlNifBinary, ErlNifBinary>> envs) {
   auto init_guard = std::lock_guard<std::mutex>(init_mutex);
 
   if (is_initialized) {
@@ -375,6 +377,38 @@ fine::Ok<> init(ErlNifEnv *env, std::string python_dl_path,
     auto py_path_guard = PyDecRefGuard(py_path);
 
     raise_if_failed(env, PyList_Append(py_sys_path, py_path));
+  }
+
+  // We set env vars to match Elixir at the time of initialization.
+  // Note that the interpreter initializes its env vars from the OS
+  // process, however we also want to account for env vars set
+  // dynamically, for example via System.put_env/2.
+
+  auto py_os = PyImport_AddModule("os");
+  raise_if_failed(env, py_os);
+
+  auto py_os_environ = PyObject_GetAttrString(py_os, "environ");
+  raise_if_failed(env, py_os_environ);
+  auto py_os_environ_guard = PyDecRefGuard(py_os_environ);
+
+  auto py_os_environ_clear = PyObject_GetAttrString(py_os_environ, "clear");
+  raise_if_failed(env, py_os_environ_clear);
+  auto py_os_environ_clear_guard = PyDecRefGuard(py_os_environ_clear);
+  auto result = PyObject_CallNoArgs(py_os_environ_clear);
+  raise_if_failed(env, result);
+
+  for (const auto &[key, value] : envs) {
+    auto py_key = PyUnicode_FromStringAndSize(
+        reinterpret_cast<const char *>(key.data), key.size);
+    raise_if_failed(env, py_key);
+    auto py_key_guard = PyDecRefGuard(py_key);
+    auto py_value = PyUnicode_FromStringAndSize(
+        reinterpret_cast<const char *>(value.data), value.size);
+    raise_if_failed(env, py_value);
+    auto py_value_guard = PyDecRefGuard(py_value);
+
+    auto result = PyObject_SetItem(py_os_environ, py_key, py_value);
+    raise_if_failed(env, result);
   }
 
   // Define global stdout and stdin overrides

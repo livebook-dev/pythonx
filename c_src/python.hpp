@@ -110,6 +110,7 @@ extern PyObjectPtr (*PyObject_GetIter)(PyObjectPtr);
 extern int (*PyObject_IsInstance)(PyObjectPtr, PyObjectPtr);
 extern PyObjectPtr (*PyObject_Repr)(PyObjectPtr);
 extern int (*PyObject_SetAttrString)(PyObjectPtr, const char *, PyObjectPtr);
+extern int (*PyObject_SetItem)(PyObjectPtr, PyObjectPtr, PyObjectPtr);
 extern PyObjectPtr (*PyObject_Str)(PyObjectPtr);
 extern int (*PySet_Add)(PyObjectPtr, PyObjectPtr);
 extern PyObjectPtr (*PySet_New)(PyObjectPtr);

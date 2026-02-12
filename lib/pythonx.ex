@@ -47,6 +47,18 @@ defmodule Pythonx do
 
   For more configuration options, refer to the [uv documentation](https://docs.astral.sh/uv/concepts/projects/dependencies/).
 
+  > #### Environment variables {: .info}
+  >
+  > As part of the initialization, Python's `os.environ` is modified
+  > to match `System.get_env/1`. Therefore, `os.environ` accounts for
+  > prior changes to the environment, such as `System.put_env/2`.
+  >
+  > Subsequent changes to the environment, both via Elixir and Python,
+  > are not synchronized.
+  >
+  > Also note that contrarily to Elixir, changes to `os.environ` are
+  > automatically mirrored to the OS process environment.
+
   ## Options
 
     * `:force` - if true, runs with empty project cache. Defaults to `false`.
@@ -196,7 +208,18 @@ defmodule Pythonx do
       raise ArgumentError, "the given python executable does not exist: #{python_executable_path}"
     end
 
-    Pythonx.NIF.init(python_dl_path, python_home_path, python_executable_path, opts[:sys_paths])
+    envs =
+      for {k, v} <- :os.env() do
+        {IO.chardata_to_string(k), IO.chardata_to_string(v)}
+      end
+
+    Pythonx.NIF.init(
+      python_dl_path,
+      python_home_path,
+      python_executable_path,
+      opts[:sys_paths],
+      envs
+    )
   end
 
   @doc ~S'''

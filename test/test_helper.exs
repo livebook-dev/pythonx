@@ -1,5 +1,7 @@
 python_minor = System.get_env("PYTHONX_TEST_PYTHON_MINOR", "13") |> String.to_integer()
 
+System.put_env("PYTHONX_TEST_ENV_VAR", "value")
+
 Pythonx.uv_init("""
 [project]
 name = "project"

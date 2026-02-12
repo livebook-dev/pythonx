@@ -477,6 +477,22 @@ defmodule PythonxTest do
     end
   end
 
+  test "inherits env vars from elixir" do
+    # We set PYTHONX_TEST_ENV_VAR in test_helper.exs, before initializing
+    # Pythonx. That env var should be available to Python.
+
+    assert {result, %{}} =
+             Pythonx.eval(
+               """
+               import os
+               os.environ["PYTHONX_TEST_ENV_VAR"]
+               """,
+               %{}
+             )
+
+    assert repr(result) == "'value'"
+  end
+
   defp repr(object) do
     assert %Pythonx.Object{} = object
 
