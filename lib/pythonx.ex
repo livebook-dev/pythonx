@@ -47,6 +47,13 @@ defmodule Pythonx do
 
   For more configuration options, refer to the [uv documentation](https://docs.astral.sh/uv/concepts/projects/dependencies/).
 
+  > #### Environment variables {: .info}
+  >
+  > Python `os.environ` is initialized using the OS process environment.
+  > Consequently, it does not account for env vars modified with
+  > `System.put_env/2` and similar. If you want to mirror certain env
+  > vars, you need to set them on `os.environ` using `Pythonx.eval/2`.
+
   ## Options
 
     * `:force` - if true, runs with empty project cache. Defaults to `false`.
