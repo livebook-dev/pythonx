@@ -430,6 +430,10 @@ import os
 
 # Prepare env vars
 
+# On Windows, os.environ keys are always uppercase.
+if os.name == "nt":
+  envs = {key.upper(): value for key, value in envs.items()}
+
 to_remove = [key for key in os.environ if key not in envs]
 
 for key in to_remove:
