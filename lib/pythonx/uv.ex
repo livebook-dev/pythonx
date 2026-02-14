@@ -11,9 +11,14 @@ defmodule Pythonx.Uv do
   @spec fetch(String.t(), boolean(), keyword()) :: :ok
   def fetch(pyproject_toml, priv?, opts \\ []) do
     opts =
-      Keyword.validate!(opts, force: false, uv_version: default_uv_version(), native_tls: false)
+      Keyword.validate!(opts,
+        force: false,
+        uv_version: default_uv_version(),
+        native_tls: false,
+        python: nil
+      )
 
-    project_dir = project_dir(pyproject_toml, priv?, opts[:uv_version])
+    project_dir = project_dir(pyproject_toml, priv?, opts[:uv_version], opts[:python])
     python_install_dir = python_install_dir(priv?, opts[:uv_version])
 
     if opts[:force] || priv? do
@@ -30,6 +35,7 @@ defmodule Pythonx.Uv do
 
       # We always use uv-managed Python, so the paths are predictable.
       base_args = ["sync", "--managed-python", "--no-config"]
+      base_args = if opts[:python], do: base_args ++ ["--python", opts[:python]], else: base_args
       uv_args = if opts[:native_tls], do: base_args ++ ["--native-tls"], else: base_args
 
       if run!(uv_args,
@@ -53,12 +59,13 @@ defmodule Pythonx.Uv do
     end
   end
 
-  defp project_dir(pyproject_toml, priv?, uv_version) do
+  defp project_dir(pyproject_toml, priv?, uv_version, python) do
     if priv? do
       Path.join(:code.priv_dir(:pythonx), "uv/project")
     else
       cache_id =
-        pyproject_toml
+        [pyproject_toml, python || ""]
+        |> IO.iodata_to_binary()
         |> :erlang.md5()
         |> Base.encode32(case: :lower, padding: false)
 
@@ -72,8 +79,8 @@ defmodule Pythonx.Uv do
   """
   @spec init(String.t(), boolean()) :: list(String.t())
   def init(pyproject_toml, priv?, opts \\ []) do
-    opts = Keyword.validate!(opts, uv_version: default_uv_version())
-    project_dir = project_dir(pyproject_toml, priv?, opts[:uv_version])
+    opts = Keyword.validate!(opts, uv_version: default_uv_version(), python: nil)
+    project_dir = project_dir(pyproject_toml, priv?, opts[:uv_version], opts[:python])
 
     # Uv stores Python installations in versioned directories in the
     # Python install dir. To find the versioned name for this project,
