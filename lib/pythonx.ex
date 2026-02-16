@@ -65,6 +65,11 @@ defmodule Pythonx do
       of vendored rustls. This is useful in corporate environments where the system
       certificate store must be used. Defaults to `false`.
 
+    * `:python` - specifies the Python version to install. It is preferred to
+      specify the version in `pyproject_toml` via the `requires-python` field.
+      However, the `:python` option can be used to install a specific variant
+      of Python, such as a free-threaded Python build, for example `"3.14t"`.
+
   '''
   @spec uv_init(String.t(), keyword()) :: :ok
   def uv_init(pyproject_toml, opts \\ []) when is_binary(pyproject_toml) and is_list(opts) do
@@ -72,11 +77,14 @@ defmodule Pythonx do
       Keyword.validate!(opts,
         force: false,
         uv_version: Pythonx.Uv.default_uv_version(),
-        native_tls: false
+        native_tls: false,
+        python: nil
       )
 
     Pythonx.Uv.fetch(pyproject_toml, false, opts)
-    install_paths = Pythonx.Uv.init(pyproject_toml, false, Keyword.take(opts, [:uv_version]))
+
+    install_paths =
+      Pythonx.Uv.init(pyproject_toml, false, Keyword.take(opts, [:uv_version, :python]))
 
     init_state = %{
       type: :uv_init,
