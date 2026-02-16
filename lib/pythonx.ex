@@ -54,6 +54,14 @@ defmodule Pythonx do
   > `System.put_env/2` and similar. If you want to mirror certain env
   > vars, you need to set them on `os.environ` using `Pythonx.eval/2`.
 
+  > #### Free-threaded Python {: .info}
+  >
+  > Since Python 3.14, there is an official free-threaded Python build,
+  > which eliminates GIL and its caveats referred to throughout this
+  > documentation. To use a free-threaded build, you can specify an
+  > appropriate Python version variant using the `:python` option, for
+  > example `Pythonx.uv_init(..., python: "3.14t")`.
+
   ## Options
 
     * `:force` - if true, runs with empty project cache. Defaults to `false`.
