@@ -149,10 +149,10 @@ auto type = fine::Atom("type");
 auto value = fine::Atom("value");
 } // namespace atoms
 
-struct ExObjectResource {
+struct PyObjectResource {
   PyObjectPtr py_object;
 
-  ExObjectResource(PyObjectPtr py_object) : py_object(py_object) {}
+  PyObjectResource(PyObjectPtr py_object) : py_object(py_object) {}
 
   void destructor(ErlNifEnv *env) {
     // Decrementing refcount requires GIL and we should not block in
@@ -184,13 +184,13 @@ struct ExObjectResource {
   }
 };
 
-FINE_RESOURCE(ExObjectResource);
+FINE_RESOURCE(PyObjectResource);
 
 struct ExObject {
-  fine::ResourcePtr<ExObjectResource> resource;
+  fine::ResourcePtr<PyObjectResource> resource;
 
   ExObject() {}
-  ExObject(fine::ResourcePtr<ExObjectResource> resource) : resource(resource) {}
+  ExObject(fine::ResourcePtr<PyObjectResource> resource) : resource(resource) {}
 
   static constexpr auto module = &atoms::ElixirPythonxObject;
 
@@ -240,14 +240,14 @@ void raise_py_error(ErlNifEnv *env) {
         "raise_py_error should only be called when the error indicator is set");
   }
 
-  auto type = ExObject(fine::make_resource<ExObjectResource>(py_type));
+  auto type = ExObject(fine::make_resource<PyObjectResource>(py_type));
 
   // Default value and traceback to None object
 
-  auto value = fine::make_resource<ExObjectResource>(
+  auto value = fine::make_resource<PyObjectResource>(
       py_value == NULL ? Py_BuildValue("") : py_value);
 
-  auto traceback = fine::make_resource<ExObjectResource>(
+  auto traceback = fine::make_resource<PyObjectResource>(
       py_traceback == NULL ? Py_BuildValue("") : py_traceback);
 
   auto error = ExError(type, value, traceback);
@@ -280,7 +280,7 @@ ERL_NIF_TERM py_str_to_binary_term(ErlNifEnv *env, PyObjectPtr py_object) {
   // The buffer is immutable and lives as long as the Python object,
   // so we create the term as a resource binary to make it zero-copy.
   Py_IncRef(py_object);
-  auto ex_object_resource = fine::make_resource<ExObjectResource>(py_object);
+  auto ex_object_resource = fine::make_resource<PyObjectResource>(py_object);
   return fine::make_resource_binary(env, ex_object_resource, buffer, size);
 }
 
@@ -530,7 +530,7 @@ ExObject none_new(ErlNifEnv *env) {
   auto py_none = Py_BuildValue("");
   raise_if_failed(env, py_none);
 
-  return ExObject(fine::make_resource<ExObjectResource>(py_none));
+  return ExObject(fine::make_resource<PyObjectResource>(py_none));
 }
 
 FINE_NIF(none_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
@@ -542,7 +542,7 @@ ExObject false_new(ErlNifEnv *env) {
   auto py_bool = PyBool_FromLong(0);
   raise_if_failed(env, py_bool);
 
-  return ExObject(fine::make_resource<ExObjectResource>(py_bool));
+  return ExObject(fine::make_resource<PyObjectResource>(py_bool));
 }
 
 FINE_NIF(false_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
@@ -554,7 +554,7 @@ ExObject true_new(ErlNifEnv *env) {
   auto py_bool = PyBool_FromLong(1);
   raise_if_failed(env, py_bool);
 
-  return ExObject(fine::make_resource<ExObjectResource>(py_bool));
+  return ExObject(fine::make_resource<PyObjectResource>(py_bool));
 }
 
 FINE_NIF(true_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
@@ -566,7 +566,7 @@ ExObject long_from_int64(ErlNifEnv *env, int64_t number) {
   auto py_long = PyLong_FromLongLong(number);
   raise_if_failed(env, py_long);
 
-  return ExObject(fine::make_resource<ExObjectResource>(py_long));
+  return ExObject(fine::make_resource<PyObjectResource>(py_long));
 }
 
 FINE_NIF(long_from_int64, ERL_NIF_DIRTY_JOB_CPU_BOUND);
@@ -579,7 +579,7 @@ ExObject long_from_string(ErlNifEnv *env, std::string string, int64_t base) {
       PyLong_FromString(string.c_str(), NULL, static_cast<int>(base));
   raise_if_failed(env, py_long);
 
-  return ExObject(fine::make_resource<ExObjectResource>(py_long));
+  return ExObject(fine::make_resource<PyObjectResource>(py_long));
 }
 
 FINE_NIF(long_from_string, ERL_NIF_DIRTY_JOB_CPU_BOUND);
@@ -591,7 +591,7 @@ ExObject float_new(ErlNifEnv *env, double number) {
   auto py_float = PyFloat_FromDouble(number);
   raise_if_failed(env, py_float);
 
-  return ExObject(fine::make_resource<ExObjectResource>(py_float));
+  return ExObject(fine::make_resource<PyObjectResource>(py_float));
 }
 
 FINE_NIF(float_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
@@ -604,7 +604,7 @@ ExObject bytes_from_binary(ErlNifEnv *env, ErlNifBinary binary) {
       reinterpret_cast<const char *>(binary.data), binary.size);
   raise_if_failed(env, py_object);
 
-  return ExObject(fine::make_resource<ExObjectResource>(py_object));
+  return ExObject(fine::make_resource<PyObjectResource>(py_object));
 }
 
 FINE_NIF(bytes_from_binary, ERL_NIF_DIRTY_JOB_CPU_BOUND);
@@ -618,7 +618,7 @@ ExObject unicode_from_string(ErlNifEnv *env, ErlNifBinary binary) {
 
   raise_if_failed(env, py_object);
 
-  return ExObject(fine::make_resource<ExObjectResource>(py_object));
+  return ExObject(fine::make_resource<PyObjectResource>(py_object));
 }
 
 FINE_NIF(unicode_from_string, ERL_NIF_DIRTY_JOB_CPU_BOUND);
@@ -639,7 +639,7 @@ ExObject dict_new(ErlNifEnv *env) {
   auto py_dict = PyDict_New();
   raise_if_failed(env, py_dict);
 
-  return ExObject(fine::make_resource<ExObjectResource>(py_dict));
+  return ExObject(fine::make_resource<PyObjectResource>(py_dict));
 }
 
 FINE_NIF(dict_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
@@ -666,7 +666,7 @@ ExObject tuple_new(ErlNifEnv *env, uint64_t size) {
   auto py_tuple = PyTuple_New(size);
   raise_if_failed(env, py_tuple);
 
-  return ExObject(fine::make_resource<ExObjectResource>(py_tuple));
+  return ExObject(fine::make_resource<PyObjectResource>(py_tuple));
 }
 
 FINE_NIF(tuple_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
@@ -695,7 +695,7 @@ ExObject list_new(ErlNifEnv *env, uint64_t size) {
   auto py_tuple = PyList_New(size);
   raise_if_failed(env, py_tuple);
 
-  return ExObject(fine::make_resource<ExObjectResource>(py_tuple));
+  return ExObject(fine::make_resource<PyObjectResource>(py_tuple));
 }
 
 FINE_NIF(list_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
@@ -724,7 +724,7 @@ ExObject set_new(ErlNifEnv *env) {
   auto py_set = PySet_New(NULL);
   raise_if_failed(env, py_set);
 
-  return ExObject(fine::make_resource<ExObjectResource>(py_set));
+  return ExObject(fine::make_resource<PyObjectResource>(py_set));
 }
 
 FINE_NIF(set_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
@@ -768,7 +768,7 @@ ExObject pid_new(ErlNifEnv *env, ErlNifPid pid) {
   auto py_pid = PyObject_Call(py_PID, py_PID_args, NULL);
   raise_if_failed(env, py_pid);
 
-  return ExObject(fine::make_resource<ExObjectResource>(py_pid));
+  return ExObject(fine::make_resource<PyObjectResource>(py_pid));
 }
 
 FINE_NIF(pid_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
@@ -780,7 +780,7 @@ ExObject object_repr(ErlNifEnv *env, ExObject ex_object) {
   auto py_repr = PyObject_Repr(ex_object.resource->py_object);
   raise_if_failed(env, py_repr);
 
-  return ExObject(fine::make_resource<ExObjectResource>(py_repr));
+  return ExObject(fine::make_resource<PyObjectResource>(py_repr));
 }
 
 FINE_NIF(object_repr, ERL_NIF_DIRTY_JOB_CPU_BOUND);
@@ -912,7 +912,7 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
       auto py_item = PyTuple_GetItem(py_object, i);
       raise_if_failed(env, py_item);
       Py_IncRef(py_item);
-      auto ex_item = ExObject(fine::make_resource<ExObjectResource>(py_item));
+      auto ex_item = ExObject(fine::make_resource<PyObjectResource>(py_item));
       terms.push_back(fine::encode(env, ex_item));
     }
 
@@ -936,7 +936,7 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
       auto py_item = PyList_GetItem(py_object, i);
       raise_if_failed(env, py_item);
       Py_IncRef(py_item);
-      auto ex_item = ExObject(fine::make_resource<ExObjectResource>(py_item));
+      auto ex_item = ExObject(fine::make_resource<PyObjectResource>(py_item));
       terms.push_back(fine::encode(env, ex_item));
     }
 
@@ -961,10 +961,10 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
 
     while (PyDict_Next(py_object, &pos, &py_key, &py_value)) {
       Py_IncRef(py_key);
-      auto ex_key = ExObject(fine::make_resource<ExObjectResource>(py_key));
+      auto ex_key = ExObject(fine::make_resource<PyObjectResource>(py_key));
 
       Py_IncRef(py_value);
-      auto ex_value = ExObject(fine::make_resource<ExObjectResource>(py_value));
+      auto ex_value = ExObject(fine::make_resource<PyObjectResource>(py_value));
 
       terms.push_back(fine::encode(env, std::make_tuple(ex_key, ex_value)));
     }
@@ -995,7 +995,7 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
     // The buffer is immutable and lives as long as the Python object,
     // so we create the term as a resource binary to make it zero-copy.
     Py_IncRef(py_object);
-    auto ex_object_resource = fine::make_resource<ExObjectResource>(py_object);
+    auto ex_object_resource = fine::make_resource<PyObjectResource>(py_object);
     return fine::make_resource_binary(env, ex_object_resource, buffer, size);
   }
 
@@ -1022,7 +1022,7 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
 
     while ((py_item = PyIter_Next(py_iter)) != NULL) {
       // Note that PyIter_Next already returns a new reference
-      auto ex_item = ExObject(fine::make_resource<ExObjectResource>(py_item));
+      auto ex_item = ExObject(fine::make_resource<PyObjectResource>(py_item));
       terms.push_back(fine::encode(env, ex_item));
     }
 
@@ -1413,7 +1413,7 @@ eval(ErlNifEnv *env, ErlNifBinary code, std::string code_md5,
   if (py_last_expr_code != nullptr) {
     auto py_result = PyEval_EvalCode(py_last_expr_code, py_globals, py_globals);
     raise_if_failed(env, py_result);
-    result = ExObject(fine::make_resource<ExObjectResource>(py_result));
+    result = ExObject(fine::make_resource<PyObjectResource>(py_result));
   }
 
   // Step 4: flat-decode globals
@@ -1446,7 +1446,7 @@ eval(ErlNifEnv *env, ErlNifBinary code, std::string code_md5,
 
     // Incref before making the resource
     Py_IncRef(py_value);
-    auto ex_value = ExObject(fine::make_resource<ExObjectResource>(py_value));
+    auto ex_value = ExObject(fine::make_resource<PyObjectResource>(py_value));
     value_terms.push_back(fine::encode(env, ex_value));
   }
 
@@ -1533,7 +1533,7 @@ pythonx_handle_send_tagged_object(const char *pid_bytes, const char *tag,
       env, std::make_tuple(
                fine::Atom(tag),
                pythonx::ExObject(
-                   fine::make_resource<pythonx::ExObjectResource>(py_object))));
+                   fine::make_resource<pythonx::PyObjectResource>(py_object))));
   enif_send(caller_env, &pid, env, msg);
   enif_free_env(env);
 }
