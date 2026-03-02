@@ -1619,7 +1619,7 @@ extern "C" void pythonx_handle_io_write(const char *message,
   ErlNifPid janitor_pid;
   if (enif_whereis_pid(caller_env, janitor_name, &janitor_pid)) {
     auto device = type == 0 ? eval_info.stdout_device : eval_info.stderr_device;
-    // Copy the device term is from a differnet env, so we copy it into
+    // The device term is from a different env, so we copy it into
     // the message env, otherwise we may run into unexpected behaviour.
     device = enif_make_copy(env, device);
 
