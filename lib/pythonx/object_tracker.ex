@@ -104,7 +104,7 @@ defmodule Pythonx.ObjectTracker do
 
   @impl true
   def handle_continue(:gc, state) do
-    :erlang.garbage_collect()
+    :erlang.garbage_collect(self())
     {:noreply, state}
   end
 
