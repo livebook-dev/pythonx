@@ -3,20 +3,14 @@ defmodule Pythonx.Error do
   An exception raised when Python raises an exception.
   """
 
-  defexception [:type, :value, :traceback]
+  defexception [:lines]
 
-  @type t :: %{
-          type: Pythonx.Object.t(),
-          value: Pythonx.Object.t(),
-          traceback: Pythonx.Object.t()
-        }
+  @type t :: %__MODULE__{lines: [String.t()]}
 
   @impl true
   def message(error) do
-    lines = Pythonx.NIF.format_exception(error)
-
     lines =
-      Enum.map(lines, fn line ->
+      Enum.map(error.lines, fn line ->
         ["        ", line]
       end)
 

@@ -39,6 +39,7 @@ defmodule Pythonx.MixProject do
 
   defp deps do
     [
+      {:flame, "~> 0.5", optional: true},
       {:fine, "~> 0.1.2", runtime: false},
       {:elixir_make, "~> 0.9", runtime: false},
       {:cc_precompiler, "~> 0.1", runtime: false},

@@ -33,9 +33,13 @@ defmodule Pythonx.NIF do
   def set_add(_object, _key), do: err!()
   def pid_new(_pid), do: err!()
   def object_repr(_object), do: err!()
-  def format_exception(_error), do: err!()
   def decode_once(_object), do: err!()
   def eval(_code, _code_md5, _globals, _stdout_device, _stderr_device), do: err!()
+
+  def dump_object(_object), do: err!()
+  def load_object(_object), do: err!()
+
+  def create_gc_notifier(_pid, _message), do: err!()
 
   defp err!(), do: :erlang.nif_error(:not_loaded)
 end

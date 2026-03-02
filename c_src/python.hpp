@@ -81,6 +81,7 @@ extern int (*PyDict_Next)(PyObjectPtr, Py_ssize_t *, PyObjectPtr *,
 extern int (*PyDict_SetItem)(PyObjectPtr, PyObjectPtr, PyObjectPtr);
 extern int (*PyDict_SetItemString)(PyObjectPtr, const char *, PyObjectPtr);
 extern Py_ssize_t (*PyDict_Size)(PyObjectPtr);
+extern void (*PyErr_Clear)();
 extern void (*PyErr_Fetch)(PyObjectPtr *, PyObjectPtr *, PyObjectPtr *);
 extern PyObjectPtr (*PyErr_Occurred)();
 extern PyObjectPtr (*PyEval_GetBuiltins)();
