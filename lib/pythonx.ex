@@ -325,6 +325,15 @@ defmodule Pythonx do
         [1]
       >
 
+  ### Remote execution
+
+  If you want to evaluate code on a remote node and get `Pythonx.Object`
+  back, use `remote_eval/4` instead of `eval/3` to ensure proper
+  lifetime of the Python objects.
+
+  Pythonx also integrates with `FLAME`. When you call `eval/3` on a
+  `FLAME` runner, enable the `:track_resources` option, so that the
+  objects are properly tracked.
   '''
   @spec eval(String.t(), %{optional(String.t()) => term()}, keyword()) ::
           {Object.t() | nil, %{optional(String.t()) => Object.t()}}
@@ -336,22 +345,35 @@ defmodule Pythonx do
     end
 
     opts = Keyword.validate!(opts, [:stdout_device, :stderr_device])
+    validate_globals!(globals)
 
     globals =
       for {key, value} <- globals do
-        if not is_binary(key) do
-          raise ArgumentError, "expected globals keys to be strings, got: #{inspect(key)}"
-        end
-
         {key, encode!(value)}
       end
-
-    code_md5 = :erlang.md5(code)
 
     stdout_device = Keyword.get_lazy(opts, :stdout_device, fn -> Process.group_leader() end)
 
     stderr_device =
       Keyword.get_lazy(opts, :stderr_device, fn -> Process.whereis(:standard_error) end)
+
+    do_eval(code, globals, stdout_device, stderr_device)
+  end
+
+  defp pythonx_started?() do
+    Process.whereis(Pythonx.Supervisor) != nil
+  end
+
+  defp validate_globals!(globals) do
+    for {key, _value} <- globals do
+      if not is_binary(key) do
+        raise ArgumentError, "expected globals keys to be strings, got: #{inspect(key)}"
+      end
+    end
+  end
+
+  defp do_eval(code, globals, stdout_device, stderr_device) do
+    code_md5 = :erlang.md5(code)
 
     result = Pythonx.NIF.eval(code, code_md5, globals, stdout_device, stderr_device)
 
@@ -361,10 +383,6 @@ defmodule Pythonx do
     Pythonx.Janitor.ping()
 
     result
-  end
-
-  defp pythonx_started?() do
-    Process.whereis(Pythonx.Supervisor) != nil
   end
 
   @doc ~S'''
@@ -552,5 +570,179 @@ defmodule Pythonx do
           "Pythonx.decode/1 expects a %Pythonx.Object{}, but got nil. " <>
             "Note that Pythonx.eval/2 or the ~PY sigil result in nil, if the " <>
             "evaluated code ends with a statement, rather than expression"
+  end
+
+  @doc """
+  Creates a local copy of a remote `Pythonx.Object`.
+
+  Remote objects can be returned when using `remote_eval/4` or
+  evaluating on a `FLAME` runner. This function makes a local copy
+  of such objects, so that they can be passed to local `eval/3`,
+  if desired.
+
+  If a local object is given, it is returned as is.
+
+  ### Pickling
+
+  The object are copied across nodes in a serialized format provided
+  by the Python's build-in [`pickle`](https://docs.python.org/3/library/pickle.html)
+  module. While `pickle` supports basic Python types, and libraries
+  implement custom pickling logic, certain Python values cannot be
+  pickled by default (for example, local functions and lambdas).
+  If you run into this limitation, you can add the `cloudpickle`
+  package for extended pickling support:
+
+  ```text
+  cloudpickle==3.1.2
+  ```
+  """
+  @spec copy_remote_object(Pythonx.Object.t()) :: Pythonx.Object.t()
+  def copy_remote_object(%Pythonx.Object{} = object) when node(object.resource) == node() do
+    object
+  end
+
+  def copy_remote_object(%Pythonx.Object{} = object) do
+    node = node(object.resource)
+
+    case :erpc.call(node, __MODULE__, :__dump__, [object]) do
+      {:ok, binary} ->
+        Pythonx.NIF.load_object(binary)
+
+      {:error, "pickle", %Pythonx.Error{} = error} ->
+        raise ArgumentError, """
+        failed to serialize the given object using the built-in pickle module. The pickle module does not support all object types, for extended pickling support add the following package:
+
+            cloudpickle==3.1.2
+
+        Original error: #{Exception.message(error)}
+        """
+
+      {:error, module, %Pythonx.Error{} = error} ->
+        raise RuntimeError, """
+        failed to serialize the given object using the #{module} module.
+
+        Original error: #{Exception.message(error)}
+        """
+
+      {:exception, exception} ->
+        raise exception
+    end
+  end
+
+  @doc false
+  def __dump__(object) do
+    try do
+      Pythonx.NIF.dump_object(object)
+    rescue
+      error -> {:exception, error}
+    end
+  end
+
+  @doc """
+  Evaluates the Python `code` on `node`.
+
+  Any local Pythonx objects passed in `globals` will automatically be
+  copied into the remote node. The returned result and globals are
+  remote Pythonx objects, see the note below.
+
+  For more details and options, see `eval/3`.
+
+  > #### Remote Pythonx objects {: .warning}
+  >
+  > The result and globals returned by `remote_eval/4` are `Pythonx.Object`
+  > structs, however those point to Python objects allocated on the
+  > remote node, where the evaluation run. It is guaranteed that those
+  > Python objects are kept alive, as long as you keep a reference to
+  > the local `Pythonx.Object` structs.
+  >
+  > Avoid sending `Pythonx.Object` structs across nodes via regular
+  > messages or `:erpc.call/4` invocations. When doing so, there is
+  > no guarantee that the corresponding Python objects are kept around.
+  >
+  > Also note that calling `eval/3` does not allow remote objects to
+  > be passed in globals. If you want to do that, you need to explicitly
+  > call `copy_remote_object/1` first to get a local copy of the Python
+  > object.
+  """
+  @spec remote_eval(node(), String.t(), %{optional(String.t()) => term()}, keyword()) ::
+          {Object.t() | nil, %{optional(String.t()) => Object.t()}}
+  def remote_eval(node, code, globals, opts \\ []) do
+    opts = Keyword.validate!(opts, [:stdout_device, :stderr_device])
+    validate_globals!(globals)
+
+    stdout_device = Keyword.get_lazy(opts, :stdout_device, fn -> Process.group_leader() end)
+
+    stderr_device =
+      Keyword.get_lazy(opts, :stderr_device, fn -> Process.whereis(:standard_error) end)
+
+    message_ref = :erlang.make_ref()
+    remote_args = [self(), message_ref, code, globals, stdout_device, stderr_device]
+    child = Node.spawn(node, __MODULE__, :__remote_eval__, remote_args)
+    monitor_ref = Process.monitor(child)
+
+    receive do
+      {^message_ref, {:ok, {result, globals}}} ->
+        Process.demonitor(monitor_ref, [:flush])
+        result = track_object(result)
+        globals = Map.new(globals, fn {key, object} -> {key, track_object(object)} end)
+        send(child, {message_ref, :ok})
+        {result, globals}
+
+      {^message_ref, {:exception, error}} ->
+        Process.demonitor(monitor_ref, [:flush])
+        send(child, {message_ref, :ok})
+        raise error
+
+      {:DOWN, ^monitor_ref, :process, _pid, reason} ->
+        exit(reason)
+    end
+  end
+
+  @doc false
+  def __remote_eval__(parent, message_ref, code, globals, stdout_device, stderr_device) do
+    monitor_ref = Process.monitor(parent)
+
+    result =
+      try do
+        globals =
+          for {key, value} <- globals do
+            {key, encode!(value, &encode_with_copy_remote/2)}
+          end
+
+        result = do_eval(code, globals, stdout_device, stderr_device)
+
+        {:ok, result}
+      rescue
+        error -> {:exception, error}
+      end
+
+    send(parent, {message_ref, result})
+
+    receive do
+      {^message_ref, :ok} ->
+        Process.demonitor(monitor_ref, [:flush])
+        # Call a remote function to prevent garbage collection from
+        # happening until the caller tracks the pythonx objects.
+        Pythonx.ObjectTracker.identity(result)
+
+      {:DOWN, ^monitor_ref, :process, _pid, reason} ->
+        exit(reason)
+    end
+  end
+
+  defp encode_with_copy_remote(%Pythonx.Object{} = object, encoder)
+       when node(object.resource) != node() do
+    object
+    |> copy_remote_object()
+    |> encoder.(encoder)
+  end
+
+  defp encode_with_copy_remote(value, encoder), do: Pythonx.Encoder.encode(value, encoder)
+
+  defp track_object(object) do
+    case Pythonx.ObjectTracker.track_remote_object(object) do
+      {:noop, object} -> object
+      {:ok, object, _marker_pid} -> object
+    end
   end
 end

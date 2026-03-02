@@ -78,6 +78,14 @@ defprotocol Pythonx.Encoder do
 end
 
 defimpl Pythonx.Encoder, for: Pythonx.Object do
+  def encode(object, _encoder) when node(object.resource) != node() do
+    raise Protocol.UndefinedError,
+      protocol: @protocol,
+      value: object,
+      description:
+        "remote objects cannot be encoded implicitly, call Pythonx.copy_remote_object/1 first to get a local copy of the object"
+  end
+
   def encode(object, _encoder) do
     object
   end

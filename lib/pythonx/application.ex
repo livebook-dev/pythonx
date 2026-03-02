@@ -8,7 +8,8 @@ defmodule Pythonx.Application do
     enable_sigchld()
 
     children = [
-      Pythonx.Janitor
+      Pythonx.Janitor,
+      Pythonx.ObjectTracker
     ]
 
     opts = [strategy: :one_for_one, name: Pythonx.Supervisor]

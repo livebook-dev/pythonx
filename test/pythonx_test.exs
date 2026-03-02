@@ -477,6 +477,236 @@ defmodule PythonxTest do
     end
   end
 
+  describe "remote evaluation" do
+    @describetag :distributed
+
+    @peer1 :"peer1@127.0.0.1"
+    @peer2 :"peer2@127.0.0.1"
+
+    test "remote_eval/4 returns remote objects" do
+      {result, globals} =
+        Pythonx.remote_eval(
+          @peer1,
+          """
+          x = 1
+          x
+          """,
+          %{}
+        )
+
+      assert inspect(result) == """
+             #Pythonx.Object<
+               [node: peer1@127.0.0.1]
+               1
+             >\
+             """
+
+      assert inspect(globals["x"]) == """
+             #Pythonx.Object<
+               [node: peer1@127.0.0.1]
+               1
+             >\
+             """
+
+      # Hidden node.
+
+      {result, globals} =
+        Pythonx.remote_eval(
+          @peer2,
+          """
+          x = 1
+          x
+          """,
+          %{}
+        )
+
+      assert inspect(result) == """
+             #Pythonx.Object<
+               [node: peer2@127.0.0.1]
+               1
+             >\
+             """
+
+      assert inspect(globals["x"]) == """
+             #Pythonx.Object<
+               [node: peer2@127.0.0.1]
+               1
+             >\
+             """
+    end
+
+    test "garbage collects only once the caller has no reference to the object" do
+      {py_test_object, %{}} =
+        Pythonx.remote_eval(
+          @peer1,
+          """
+          import os
+
+          os.environ["TEST_OBJECT_DELETED"] = "false"
+
+          class TestObject:
+            def call_me(self):
+              return "maybe"
+
+            def __del__(self):
+              os.environ["TEST_OBJECT_DELETED"] = "true"
+
+          TestObject()
+          """,
+          %{}
+        )
+
+      :erpc.call(@peer1, :erlang, :garbage_collect, [])
+
+      # Can pass the object to another evaluation.
+      {result, %{}} =
+        Pythonx.remote_eval(
+          @peer1,
+          """
+          test_object.call_me()
+          """,
+          %{"test_object" => py_test_object}
+        )
+
+      assert inspect(result) =~ "maybe"
+
+      Pythonx.remote_eval(@peer1, "import gc; gc.collect()", %{})
+
+      {result, %{}} =
+        Pythonx.remote_eval(@peer1, "import os; os.environ['TEST_OBJECT_DELETED']", %{})
+
+      assert inspect(result) =~ "false"
+
+      # Hold a reference up until this point.
+      List.flatten([py_test_object])
+      :erlang.garbage_collect(self())
+
+      Pythonx.remote_eval(@peer1, "import gc; gc.collect()", %{})
+
+      # Now it should be garbage collected.
+      {result, %{}} =
+        Pythonx.remote_eval(@peer1, "import os; os.environ['TEST_OBJECT_DELETED']", %{})
+
+      assert inspect(result) =~ "true"
+    end
+
+    test "remote_eval/4 sends standard output to caller's group leader" do
+      assert ExUnit.CaptureIO.capture_io(fn ->
+               Pythonx.remote_eval(
+                 @peer1,
+                 """
+                 print("hello from Python")
+                 """,
+                 %{}
+               )
+             end) == "hello from Python\n"
+
+      # Python thread spawned by the evaluation
+      assert ExUnit.CaptureIO.capture_io(fn ->
+               Pythonx.remote_eval(
+                 @peer1,
+                 """
+                 import threading
+
+                 def run():
+                   print("hello from thread")
+
+                 thread = threading.Thread(target=run)
+                 thread.start()
+                 thread.join()
+                 """,
+                 %{}
+               )
+             end) == "hello from thread\n"
+    end
+
+    test "remote_eval/4 automatically copies objects in globals into the remote node" do
+      {one, %{}} = Pythonx.eval("1", %{})
+
+      {result, globals} = Pythonx.remote_eval(@peer1, "one + 2", %{"one" => one})
+
+      assert inspect(result) == """
+             #Pythonx.Object<
+               [node: peer1@127.0.0.1]
+               3
+             >\
+             """
+
+      assert inspect(globals["one"]) == """
+             #Pythonx.Object<
+               [node: peer1@127.0.0.1]
+               1
+             >\
+             """
+    end
+
+    test "copy_remote_object/1 makes a local copy of a remote object" do
+      {result, %{}} = Pythonx.remote_eval(@peer1, "1", %{})
+
+      assert inspect(result) == """
+             #Pythonx.Object<
+               [node: peer1@127.0.0.1]
+               1
+             >\
+             """
+
+      local = Pythonx.copy_remote_object(result)
+
+      assert inspect(local) == """
+             #Pythonx.Object<
+               1
+             >\
+             """
+    end
+
+    test "copy_remote_object/1 uses cloudpickle if available" do
+      # The built-in pickle module does not support lambdas, but cloudpickle does.
+      {square_it, %{}} = Pythonx.remote_eval(@peer1, "lambda x: x * x", %{})
+
+      {result, %{}} =
+        Pythonx.eval("square_it(2)", %{"square_it" => Pythonx.copy_remote_object(square_it)})
+
+      assert repr(result) == "4"
+    end
+
+    test "copy_remote_object/1 keeps already local object as is" do
+      {result, %{}} = Pythonx.eval("1", %{})
+
+      assert Pythonx.copy_remote_object(result) == result
+    end
+
+    test "encode!/1 fails for remote objects" do
+      {result, %{}} = Pythonx.remote_eval(@peer1, "1", %{})
+
+      assert_raise Protocol.UndefinedError, ~r/remote objects cannot be encoded implicitly/, fn ->
+        Pythonx.encode!(result)
+      end
+    end
+
+    test "FLAME.Trackable.track/3 pid terminates once there are no more object references" do
+      {untracked_object, _binding} =
+        :erpc.call(@peer1, Code, :eval_quoted, [
+          quote do
+            {result, %{}} = Pythonx.eval("1", %{})
+            # Keep the object around, since we track it only later.
+            Agent.start(fn -> result end)
+            result
+          end
+        ])
+
+      {tracked_object, [pid]} = FLAME.Trackable.track(untracked_object, [], @peer1)
+
+      ref = Process.monitor(pid)
+      assert :erpc.call(@peer1, Process, :alive?, [pid])
+
+      # Hold a reference up until this point.
+      List.flatten([tracked_object])
+      :erlang.garbage_collect(self())
+
+      assert_receive {:DOWN, ^ref, _, _, _}
+    end
+  end
+
   defp repr(object) do
     assert %Pythonx.Object{} = object
 
