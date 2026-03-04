@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [v0.4.8](https://github.com/livebook-dev/pythonx/tree/v0.4.8) (2026-03-04)
+
+### Added
+
+- `Pythonx.install_env/0` and `Pythonx.install_paths/0` to streamline usage with FLAME ([#35](https://github.com/livebook-dev/pythonx/pull/35))
+- Python API for sending messages to Elixir ([#38](https://github.com/livebook-dev/pythonx/pull/38))
+- Added `:native_tls` option to `Pythonx.uv_init/2` ([#41](https://github.com/livebook-dev/pythonx/pull/41))
+- Added `:python` option to `Pythonx.uv_init/2` for free-threaded Python support ([#45](https://github.com/livebook-dev/pythonx/pull/45))
+- Remote evaluation via `Pythonx.remote_eval/4` and FLAME integration ([#46](https://github.com/livebook-dev/pythonx/pull/46))
+
+### Fixed
+
+- Global uv config affecting `Pythonx.uv_init/2` ([#34](https://github.com/livebook-dev/pythonx/pull/34))
+
 ## [v0.4.7](https://github.com/livebook-dev/pythonx/tree/v0.4.7) (2025-08-08)
 
 ### Added
