@@ -104,22 +104,20 @@ defmodule Pythonx do
     :persistent_term.put(:pythonx_init_state, init_state)
   end
 
-  @spec init_state() :: map()
   defp init_state() do
-    :persistent_term.get(:pythonx_init_state)
+    :persistent_term.get(:pythonx_init_state, nil)
   end
 
-  @spec init_state_from_env() :: String.t() | nil
   defp init_state_from_env(), do: System.get_env(@install_env_name)
 
-  @doc ~s'''
+  @doc """
   Returns a map with opaque environment variables to initialize Pythonx in
   the same way as the current initialization.
 
   When those environment variables are set, Pythonx is initialized on boot.
 
   In particular, this can be used to make Pythonx initialize on `FLAME` nodes.
-  '''
+  """
   @spec install_env() :: map()
   def install_env() do
     init_state = init_state()
@@ -136,11 +134,11 @@ defmodule Pythonx do
     %{@install_env_name => init_state}
   end
 
-  @doc ~s'''
+  @doc """
   Returns a list of paths that `install_env/0` initialization depends on.
 
   In particular, this can be used to make Pythonx initialize on `FLAME` nodes.
-  '''
+  """
   @spec install_paths() :: list(String.t())
   def install_paths() do
     init_state = init_state()
