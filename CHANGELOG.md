@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [v0.4.9](https://github.com/livebook-dev/pythonx/tree/v0.4.9) (2026-03-06)
+
+### Added
+
+-  Added `:type`, `:value` and `:traceback` fields back to Pythonx.Error ([#47](https://github.com/livebook-dev/pythonx/pull/47))
+
 ## [v0.4.8](https://github.com/livebook-dev/pythonx/tree/v0.4.8) (2026-03-04)
 
 ### Added
