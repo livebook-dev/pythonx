@@ -3,9 +3,14 @@ defmodule Pythonx.Error do
   An exception raised when Python raises an exception.
   """
 
-  defexception [:lines]
+  defexception [:lines, :type, :value, :traceback]
 
-  @type t :: %__MODULE__{lines: [String.t()]}
+  @type t :: %__MODULE__{
+          lines: [String.t()],
+          type: Pythonx.Object.t(),
+          value: Pythonx.Object.t(),
+          traceback: Pythonx.Object.t()
+        }
 
   @impl true
   def message(error) do

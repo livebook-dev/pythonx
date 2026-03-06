@@ -146,7 +146,10 @@ auto map_set = fine::Atom("map_set");
 auto output = fine::Atom("output");
 auto remote_info = fine::Atom("remote_info");
 auto resource = fine::Atom("resource");
+auto traceback = fine::Atom("traceback");
 auto tuple = fine::Atom("tuple");
+auto type = fine::Atom("type");
+auto value = fine::Atom("value");
 } // namespace atoms
 
 struct PyObjectResource {
@@ -221,14 +224,23 @@ struct ExObject {
 
 struct ExError {
   std::vector<fine::Term> lines;
+  ExObject type;
+  ExObject value;
+  ExObject traceback;
 
   ExError() {}
-  ExError(std::vector<fine::Term> lines) : lines(lines) {}
+  ExError(std::vector<fine::Term> lines, ExObject type, ExObject value,
+          ExObject traceback)
+      : lines(lines), type(type), value(value), traceback(traceback) {}
 
   static constexpr auto module = &atoms::ElixirPythonxError;
 
   static constexpr auto fields() {
-    return std::make_tuple(std::make_tuple(&ExError::lines, &atoms::lines));
+    return std::make_tuple(
+        std::make_tuple(&ExError::lines, &atoms::lines),
+        std::make_tuple(&ExError::type, &atoms::type),
+        std::make_tuple(&ExError::value, &atoms::value),
+        std::make_tuple(&ExError::traceback, &atoms::traceback));
   }
 
   static constexpr auto is_exception = true;
@@ -241,23 +253,9 @@ struct EvalInfo {
   std::thread::id thread_id;
 };
 
-void raise_formatting_error_if_failed(PyObjectPtr py_object) {
-  if (py_object == NULL) {
-    throw std::runtime_error("failed while formatting a python error");
-  }
-}
-
-void raise_formatting_error_if_failed(const char *buffer) {
-  if (buffer == NULL) {
-    throw std::runtime_error("failed while formatting a python error");
-  }
-}
-
-void raise_formatting_error_if_failed(Py_ssize_t size) {
-  if (size == -1) {
-    throw std::runtime_error("failed while formatting a python error");
-  }
-}
+std::vector<fine::Term> py_error_lines(ErlNifEnv *env, PyObjectPtr py_type,
+                                       PyObjectPtr py_value,
+                                       PyObjectPtr py_traceback);
 
 ExError build_py_error_from_current(ErlNifEnv *env) {
   PyObjectPtr py_type, py_value, py_traceback;
@@ -270,58 +268,16 @@ ExError build_py_error_from_current(ErlNifEnv *env) {
                              "called when the error indicator is set");
   }
 
-  auto type = ExObject(fine::make_resource<PyObjectResource>(py_type));
-
   // Default value and traceback to None object.
   py_value = py_value == NULL ? Py_BuildValue("") : py_value;
   py_traceback = py_traceback == NULL ? Py_BuildValue("") : py_traceback;
 
-  // Format the exception. Note that if anything raises an error here,
-  // we throw a runtime exception, instead of a Python one, otherwise
-  // we could go into an infinite loop.
+  auto lines = py_error_lines(env, py_type, py_value, py_traceback);
+  auto type = fine::make_resource<PyObjectResource>(py_type);
+  auto value = fine::make_resource<PyObjectResource>(py_value);
+  auto traceback = fine::make_resource<PyObjectResource>(py_traceback);
 
-  auto py_traceback_module = PyImport_ImportModule("traceback");
-  raise_formatting_error_if_failed(py_traceback_module);
-  auto py_traceback_module_guard = PyDecRefGuard(py_traceback_module);
-
-  auto format_exception =
-      PyObject_GetAttrString(py_traceback_module, "format_exception");
-  raise_formatting_error_if_failed(format_exception);
-  auto format_exception_guard = PyDecRefGuard(format_exception);
-
-  auto format_exception_args = PyTuple_Pack(3, py_type, py_value, py_traceback);
-  raise_formatting_error_if_failed(format_exception_args);
-  auto format_exception_args_guard = PyDecRefGuard(format_exception_args);
-
-  auto py_lines = PyObject_Call(format_exception, format_exception_args, NULL);
-  raise_formatting_error_if_failed(py_lines);
-  auto py_lines_guard = PyDecRefGuard(py_lines);
-
-  auto size = PyList_Size(py_lines);
-  raise_formatting_error_if_failed(size);
-
-  auto terms = std::vector<fine::Term>();
-  terms.reserve(size);
-
-  for (Py_ssize_t i = 0; i < size; i++) {
-    auto py_line = PyList_GetItem(py_lines, i);
-    raise_formatting_error_if_failed(py_line);
-
-    Py_ssize_t size;
-    auto buffer = PyUnicode_AsUTF8AndSize(py_line, &size);
-    raise_formatting_error_if_failed(buffer);
-
-    // The buffer is immutable and lives as long as the Python object,
-    // so we create the term as a resource binary to make it zero-copy.
-    Py_IncRef(py_line);
-    auto ex_object_resource = fine::make_resource<PyObjectResource>(py_line);
-    auto binary_term =
-        fine::make_resource_binary(env, ex_object_resource, buffer, size);
-
-    terms.push_back(binary_term);
-  }
-
-  return ExError(std::move(terms));
+  return ExError(lines, type, value, traceback);
 }
 
 void raise_py_error(ErlNifEnv *env) {
@@ -369,6 +325,42 @@ ERL_NIF_TERM py_bytes_to_binary_term(ErlNifEnv *env, PyObjectPtr py_object) {
   Py_IncRef(py_object);
   auto ex_object_resource = fine::make_resource<PyObjectResource>(py_object);
   return fine::make_resource_binary(env, ex_object_resource, buffer, size);
+}
+
+std::vector<fine::Term> py_error_lines(ErlNifEnv *env, PyObjectPtr py_type,
+                                       PyObjectPtr py_value,
+                                       PyObjectPtr py_traceback) {
+  auto py_traceback_module = PyImport_ImportModule("traceback");
+  raise_if_failed(env, py_traceback_module);
+  auto py_traceback_module_guard = PyDecRefGuard(py_traceback_module);
+
+  auto format_exception =
+      PyObject_GetAttrString(py_traceback_module, "format_exception");
+  raise_if_failed(env, format_exception);
+  auto format_exception_guard = PyDecRefGuard(format_exception);
+
+  auto format_exception_args = PyTuple_Pack(3, py_type, py_value, py_traceback);
+  raise_if_failed(env, format_exception_args);
+  auto format_exception_args_guard = PyDecRefGuard(format_exception_args);
+
+  auto py_lines = PyObject_Call(format_exception, format_exception_args, NULL);
+  raise_if_failed(env, py_lines);
+  auto py_lines_guard = PyDecRefGuard(py_lines);
+
+  auto size = PyList_Size(py_lines);
+  raise_if_failed(env, size);
+
+  auto terms = std::vector<fine::Term>();
+  terms.reserve(size);
+
+  for (Py_ssize_t i = 0; i < size; i++) {
+    auto py_line = PyList_GetItem(py_lines, i);
+    raise_if_failed(env, py_line);
+
+    terms.push_back(py_str_to_binary_term(env, py_line));
+  }
+
+  return terms;
 }
 
 fine::Ok<> init(ErlNifEnv *env, std::string python_dl_path,
