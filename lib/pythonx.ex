@@ -606,23 +606,7 @@ defmodule Pythonx do
       {:ok, binary} ->
         Pythonx.NIF.load_object(binary)
 
-      {:error, "pickle", %Pythonx.Error{} = error} ->
-        raise ArgumentError, """
-        failed to serialize the given object using the built-in pickle module. The pickle module does not support all object types, for extended pickling support add the following package:
-
-            cloudpickle==3.1.2
-
-        Original error: #{Exception.message(error)}
-        """
-
-      {:error, module, %Pythonx.Error{} = error} ->
-        raise RuntimeError, """
-        failed to serialize the given object using the #{module} module.
-
-        Original error: #{Exception.message(error)}
-        """
-
-      {:exception, exception} ->
+      {:error, exception} ->
         raise exception
     end
   end
@@ -630,9 +614,43 @@ defmodule Pythonx do
   @doc false
   def __dump__(object) do
     try do
-      Pythonx.NIF.dump_object(object)
+      case Pythonx.NIF.dump_object(object) do
+        {:ok, binary} ->
+          {:ok, binary}
+
+        {:error, "pickle", %Pythonx.Error{} = error} ->
+          {:error,
+           ArgumentError.exception("""
+           failed to serialize the given object using the built-in pickle module. The pickle module does not support all object types, for extended pickling support add the following package:
+
+               cloudpickle==3.1.2
+
+           Original error: #{Exception.message(error)}
+           """)}
+
+        {:error, module, %Pythonx.Error{} = error} ->
+          {:error,
+           RuntimeError.exception("""
+           failed to serialize the given object using the #{module} module.
+
+           Original error: #{Exception.message(error)}
+           """)}
+      end
     rescue
-      error -> {:exception, error}
+      error in Pythonx.Error ->
+        # We don't want to return Pythonx.Error as is, because we
+        # would need more elaborate logic to track it, like we do in
+        # remote_eval/4, so we convert it into a RuntimeError instead.
+        # This should only really happen if there is an implementation
+        # error in Pythonx itself, since pickling errors are handled
+        # explicitly above.
+        {:error,
+         RuntimeError.exception("""
+         failed to serialize the given object, got Python exception: #{Exception.message(error)}
+         """)}
+
+      error ->
+        {:error, error}
     end
   end
 
@@ -688,6 +706,13 @@ defmodule Pythonx do
 
       {^message_ref, {:exception, error}} ->
         Process.demonitor(monitor_ref, [:flush])
+
+        error =
+          case error do
+            %Pythonx.Error{} = error -> track_object(error)
+            error -> error
+          end
+
         send(child, {message_ref, :ok})
         raise error
 
@@ -737,10 +762,18 @@ defmodule Pythonx do
 
   defp encode_with_copy_remote(value, encoder), do: Pythonx.Encoder.encode(value, encoder)
 
-  defp track_object(object) do
+  defp track_object(%Pythonx.Object{} = object) do
     case Pythonx.ObjectTracker.track_remote_object(object) do
       {:noop, object} -> object
       {:ok, object, _marker_pid} -> object
     end
+  end
+
+  defp track_object(%Pythonx.Error{type: type, value: value, traceback: traceback}) do
+    %Pythonx.Error{
+      type: track_object(type),
+      value: track_object(value),
+      traceback: track_object(traceback)
+    }
   end
 end
