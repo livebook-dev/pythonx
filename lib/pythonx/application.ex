@@ -26,7 +26,8 @@ defmodule Pythonx.Application do
   uv_init_env = Application.compile_env(:pythonx, :uv_init)
   pyproject_toml = uv_init_env[:pyproject_toml]
   uv_version = uv_init_env[:uv_version] || Pythonx.Uv.default_uv_version()
-  opts = [uv_version: uv_version]
+  python = uv_init_env[:python]
+  opts = [uv_version: uv_version, python: python]
 
   if pyproject_toml do
     Pythonx.Uv.fetch(pyproject_toml, true, opts)
