@@ -475,6 +475,36 @@ defmodule PythonxTest do
       assert_receive {:message_from_python, %Pythonx.Object{} = object}
       assert repr(object) == "('hello', 1)"
     end
+
+    test "pythonx.send_tagged_object takes a reference for the sent object" do
+      # Like any %Pythonx.Object{}, the sent one holds a reference, which
+      # its resource releases once it's garbage collected. Without taking
+      # one, that release frees the object while Python still uses it.
+      #
+      # Both counts are taken here, while the message is in the mailbox.
+      # Sending leaves reference cycles behind (from inspect.stack()) that
+      # hold on to the object, so those are collected first.
+      {result, _globals} =
+        Pythonx.eval(
+          """
+          import gc
+          import sys
+          import pythonx
+
+          obj = [1, 2, 3]
+          before = sys.getrefcount(obj)
+          pythonx.send_tagged_object(pid, "message_from_python", obj)
+          gc.collect()
+          (before, sys.getrefcount(obj))
+          """,
+          %{"pid" => self()}
+        )
+
+      assert_receive {:message_from_python, %Pythonx.Object{}}
+
+      {before, after_send} = Pythonx.decode(result)
+      assert after_send == before + 1
+    end
   end
 
   describe "remote evaluation" do

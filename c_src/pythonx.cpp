@@ -476,7 +476,9 @@ pythonx_handle_io_write = ctypes.CFUNCTYPE(
   None, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_bool
 )(pythonx_handle_io_write_ptr)
 
-pythonx_handle_send_tagged_object = ctypes.CFUNCTYPE(
+# PYFUNCTYPE keeps the GIL held during the call, which the handler needs
+# to take a reference to the object.
+pythonx_handle_send_tagged_object = ctypes.PYFUNCTYPE(
   None, ctypes.c_char_p, ctypes.c_char_p, ctypes.py_object, ctypes.c_char_p
 )(pythonx_handle_send_tagged_object_ptr)
 
@@ -1637,6 +1639,11 @@ pythonx_handle_send_tagged_object(const char *pid_bytes, const char *tag,
 
   auto pid = ErlNifPid{};
   std::memcpy(&pid, pid_bytes, sizeof(ErlNifPid));
+
+  // The object is a borrowed reference, while the resource releases a
+  // reference once garbage collected, so we take one for it. The caller
+  // holds the GIL (see the PYFUNCTYPE prototype).
+  pythonx::python::Py_IncRef(py_object);
 
   auto msg = fine::encode(
       env, std::make_tuple(
