@@ -1640,9 +1640,9 @@ pythonx_handle_send_tagged_object(const char *pid_bytes, const char *tag,
   auto pid = ErlNifPid{};
   std::memcpy(&pid, pid_bytes, sizeof(ErlNifPid));
 
-  // The object is a borrowed reference, while the resource releases a
-  // reference once garbage collected, so we take one for it. The caller
-  // holds the GIL (see the PYFUNCTYPE prototype).
+  // The object is a borrowed reference, so we bump the refcount before
+  // creating our resource. This runs via PYFUNCTYPE, so the caller holds
+  // the GIL at this point.
   pythonx::python::Py_IncRef(py_object);
 
   auto msg = fine::encode(

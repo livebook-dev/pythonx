@@ -477,13 +477,9 @@ defmodule PythonxTest do
     end
 
     test "pythonx.send_tagged_object takes a reference for the sent object" do
-      # Like any %Pythonx.Object{}, the sent one holds a reference, which
-      # its resource releases once it's garbage collected. Without taking
-      # one, that release frees the object while Python still uses it.
-      #
-      # Both counts are taken here, while the message is in the mailbox.
+      # Both counts are taken in the eval, while the message is in the mailbox.
       # Sending leaves reference cycles behind (from inspect.stack()) that
-      # hold on to the object, so those are collected first.
+      # hold on to the object, so we GC first.
       {result, _globals} =
         Pythonx.eval(
           """
