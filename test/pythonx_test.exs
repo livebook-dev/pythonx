@@ -475,6 +475,32 @@ defmodule PythonxTest do
       assert_receive {:message_from_python, %Pythonx.Object{} = object}
       assert repr(object) == "('hello', 1)"
     end
+
+    test "pythonx.send_tagged_object takes a reference for the sent object" do
+      # Both counts are taken in the eval, while the message is in the mailbox.
+      # Sending leaves reference cycles behind (from inspect.stack()) that
+      # hold on to the object, so we GC first.
+      {result, _globals} =
+        Pythonx.eval(
+          """
+          import gc
+          import sys
+          import pythonx
+
+          obj = [1, 2, 3]
+          before = sys.getrefcount(obj)
+          pythonx.send_tagged_object(pid, "message_from_python", obj)
+          gc.collect()
+          (before, sys.getrefcount(obj))
+          """,
+          %{"pid" => self()}
+        )
+
+      assert_receive {:message_from_python, %Pythonx.Object{}}
+
+      {before, after_send} = Pythonx.decode(result)
+      assert after_send == before + 1
+    end
   end
 
   describe "remote evaluation" do
