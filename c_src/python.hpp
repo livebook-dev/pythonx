@@ -82,6 +82,7 @@ extern int (*PyDict_SetItem)(PyObjectPtr, PyObjectPtr, PyObjectPtr);
 extern int (*PyDict_SetItemString)(PyObjectPtr, const char *, PyObjectPtr);
 extern Py_ssize_t (*PyDict_Size)(PyObjectPtr);
 extern void (*PyErr_Clear)();
+extern void (*PyErr_SetString)(PyObjectPtr, const char *);
 extern void (*PyErr_Fetch)(PyObjectPtr *, PyObjectPtr *, PyObjectPtr *);
 extern PyObjectPtr (*PyErr_Occurred)();
 extern PyObjectPtr (*PyEval_GetBuiltins)();
@@ -128,11 +129,15 @@ extern PyObjectPtr (*Py_CompileString)(const char *, const char *, int);
 extern void (*Py_DecRef)(PyObjectPtr);
 extern void (*Py_IncRef)(PyObjectPtr);
 extern void (*Py_InitializeEx)(int);
+extern int (*Py_FinalizeEx)();
 extern int (*Py_IsFalse)(PyObjectPtr);
 extern int (*Py_IsNone)(PyObjectPtr);
 extern int (*Py_IsTrue)(PyObjectPtr);
 extern void (*Py_SetPythonHome)(const wchar_t *);
 extern void (*Py_SetProgramName)(const wchar_t *);
+
+// Exception objects (global variables, not functions)
+extern PyObjectPtr PyExc_RuntimeError;
 
 // Opens Python dynamic library at the given path and looks up all
 // relevant symbols.

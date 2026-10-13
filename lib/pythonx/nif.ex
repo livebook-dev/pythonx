@@ -13,6 +13,8 @@ defmodule Pythonx.NIF do
   end
 
   def init(_python_dl_path, _python_home_path, _python_executable_path, _sys_paths), do: err!()
+  # returns {return_code, resource_count} (both ints)
+  def finalize(), do: err!()
   def janitor_decref(_ptr), do: err!()
   def none_new(), do: err!()
   def false_new(), do: err!()

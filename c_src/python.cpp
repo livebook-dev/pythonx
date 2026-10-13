@@ -28,6 +28,7 @@ DEF_SYMBOL(PyDict_SetItem)
 DEF_SYMBOL(PyDict_SetItemString)
 DEF_SYMBOL(PyDict_Size)
 DEF_SYMBOL(PyErr_Clear)
+DEF_SYMBOL(PyErr_SetString)
 DEF_SYMBOL(PyErr_Fetch)
 DEF_SYMBOL(PyErr_Occurred)
 DEF_SYMBOL(PyEval_GetBuiltins)
@@ -74,11 +75,15 @@ DEF_SYMBOL(Py_CompileString)
 DEF_SYMBOL(Py_DecRef)
 DEF_SYMBOL(Py_IncRef)
 DEF_SYMBOL(Py_InitializeEx)
+DEF_SYMBOL(Py_FinalizeEx)
 DEF_SYMBOL(Py_IsFalse)
 DEF_SYMBOL(Py_IsNone)
 DEF_SYMBOL(Py_IsTrue)
 DEF_SYMBOL(Py_SetPythonHome)
 DEF_SYMBOL(Py_SetProgramName)
+
+// Exception objects
+DEF_SYMBOL(PyExc_RuntimeError)
 
 dl::LibraryHandle python_library;
 
@@ -103,6 +108,7 @@ void load_python_library(std::string path) {
   LOAD_SYMBOL(python_library, PyDict_SetItemString)
   LOAD_SYMBOL(python_library, PyDict_Size)
   LOAD_SYMBOL(python_library, PyErr_Clear)
+  LOAD_SYMBOL(python_library, PyErr_SetString)
   LOAD_SYMBOL(python_library, PyErr_Fetch)
   LOAD_SYMBOL(python_library, PyErr_Occurred)
   LOAD_SYMBOL(python_library, PyEval_GetBuiltins)
@@ -149,11 +155,15 @@ void load_python_library(std::string path) {
   LOAD_SYMBOL(python_library, Py_DecRef)
   LOAD_SYMBOL(python_library, Py_IncRef)
   LOAD_SYMBOL(python_library, Py_InitializeEx)
+  LOAD_SYMBOL(python_library, Py_FinalizeEx)
   LOAD_SYMBOL(python_library, Py_IsFalse)
   LOAD_SYMBOL(python_library, Py_IsNone)
   LOAD_SYMBOL(python_library, Py_IsTrue)
   LOAD_SYMBOL(python_library, Py_SetPythonHome)
   LOAD_SYMBOL(python_library, Py_SetProgramName)
+
+  // Exception objects
+  LOAD_SYMBOL(python_library, PyExc_RuntimeError)
 }
 
 void unload_python_library() {

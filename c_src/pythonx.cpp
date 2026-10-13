@@ -1,4 +1,6 @@
+#include <atomic>
 #include <cstddef>
+#include <cstring>
 #include <erl_nif.h>
 #include <fine.hpp>
 #include <iostream>
@@ -8,9 +10,11 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <chrono>
 #include <tuple>
 #include <variant>
 
+#include "main_thread.hpp"
 #include "python.hpp"
 
 extern "C" void pythonx_handle_io_write(const char *message,
@@ -28,13 +32,48 @@ using namespace python;
 // State
 std::mutex init_mutex;
 bool is_initialized = false;
+// Incremented (set to a steady_clock timestamp) each time the interpreter
+// is initialized. Set to 0 during finalization and when not initialized.
+// Stamped into PyObjectResource so that objects from a previous generation
+// (before finalize + re-init) are detected and rejected.
+// Only written while holding init_mutex.
+uint64_t init_generation = 0;
 std::wstring python_home_path_w;
 std::wstring python_executable_path_w;
 std::map<std::string, std::tuple<PyObjectPtr, PyObjectPtr>> compilation_cache;
 std::mutex compilation_cache_mutex;
 PyInterpreterStatePtr interpreter_state;
+// Thread states for the dirty scheduler threads, created lazily by
+// PyGILGuard. The main thread state lives in main_thread_state, not here.
 std::map<std::thread::id, PyThreadStatePtr> thread_states;
 std::mutex thread_states_mutex;
+
+// Intentionally leaked. If the process exits without finalize() (for
+// example with finalization disabled, or via System.halt/1), the
+// thread is still joinable, and destroying a joinable std::thread
+// during static destruction calls std::terminate, aborting the VM
+// on its way out. The thread dies with the process.
+MainThread &main_thread = *new MainThread();
+// Thread state created by Py_InitializeEx on main_thread, saved with
+// PyEval_SaveThread. Restored on the same thread before Py_FinalizeEx.
+PyThreadStatePtr main_thread_state = nullptr;
+
+// Active thread count for finalize. ensure_initialized() increments
+// this under init_mutex (via ActiveThreadGuard) before returning.
+// janitor_decref() also increments this (without init_mutex) so that
+// finalize() waits for in-flight decref calls that may be blocked on
+// the GIL. ActiveThreadGuard's destructor decrements it under
+// active_threads_mutex. finalize() holds init_mutex for its entire
+// duration and polls this counter to wait for in-flight threads.
+std::mutex active_threads_mutex;
+int active_threads = 0;
+
+// Atomic count of live PyObjectResource instances. Incremented by
+// make_pyobject, decremented by the resource destructor. Read by the
+// finalize NIF (under init_mutex) to report how many resource-backed
+// binaries survive finalization — a non-zero count means dangling
+// pointers are possible if PYTHONX_FAST_BINARIES is in effect.
+std::atomic<int> resource_count{0};
 
 // Wrapper around the Python Global Interpreter Lock (GIL).
 //
@@ -125,12 +164,36 @@ public:
   }
 };
 
-void ensure_initialized() {
-  auto init_guard = std::lock_guard<std::mutex>(init_mutex);
+// RAII guard for the active thread count. Returned by ensure_initialized().
+// Its destructor decrements active_threads, signaling finalize() that
+// this thread has left Python code.
+class ActiveThreadGuard {
+public:
+  ActiveThreadGuard() {
+    auto guard = std::lock_guard<std::mutex>(active_threads_mutex);
+    active_threads++;
+  }
 
+  ~ActiveThreadGuard() {
+    auto guard = std::lock_guard<std::mutex>(active_threads_mutex);
+    active_threads--;
+  }
+
+  ActiveThreadGuard(const ActiveThreadGuard &) = delete;
+  ActiveThreadGuard &operator=(const ActiveThreadGuard &) = delete;
+};
+
+// Checks that the interpreter is initialized and returns an
+// ActiveThreadGuard that keeps active_threads incremented for the
+// duration of the NIF call. The increment happens under init_mutex,
+// so finalize() (which holds init_mutex for its entire duration) sees
+// a stable count.
+ActiveThreadGuard ensure_initialized() {
+  auto init_guard = std::lock_guard<std::mutex>(init_mutex);
   if (!is_initialized) {
     throw std::runtime_error("Python interpreter has not been initialized");
   }
+  return ActiveThreadGuard();
 }
 
 namespace atoms {
@@ -154,19 +217,25 @@ auto value = fine::Atom("value");
 
 struct PyObjectResource {
   PyObjectPtr py_object;
+  uint64_t generation;
 
-  PyObjectResource(PyObjectPtr py_object) : py_object(py_object) {}
+  PyObjectResource(PyObjectPtr py_object, uint64_t generation)
+      : py_object(py_object), generation(generation) {}
 
   void destructor(ErlNifEnv *env) {
+    // Always decrement the resource count so finalize can report an
+    // accurate leftover count.
+    resource_count.fetch_sub(1, std::memory_order_relaxed);
+
     // Decrementing refcount requires GIL and we should not block in
     // the destructor, so we send a message to a known process and let
     // it decrement the refcount for us. Also see [1].
     //
     // [1]:https://erlangforums.com/t/how-to-deal-with-destructors-that-can-take-a-while-to-run-and-possibly-block-the-scheduler/4290
 
-    if (!is_initialized) {
-      // If we allow multiple initializations, we need to add a counter
-      // and check that py_object comes from the current initialization
+    // Skip if the interpreter is not initialized or the object is
+    // from a previous generation (before finalize + re-init).
+    if (!is_initialized || generation != init_generation || generation == 0) {
       return;
     }
 
@@ -188,6 +257,12 @@ struct PyObjectResource {
 };
 
 FINE_RESOURCE(PyObjectResource);
+
+// Factory for creating PyObjectResource with the current init_generation.
+fine::ResourcePtr<PyObjectResource> make_pyobject(PyObjectPtr ptr) {
+  resource_count.fetch_add(1, std::memory_order_relaxed);
+  return fine::make_resource<PyObjectResource>(ptr, init_generation);
+}
 
 // A resource that notifies the given process upon garbage collection.
 struct GCNotifier {
@@ -246,6 +321,17 @@ struct ExError {
   static constexpr auto is_exception = true;
 };
 
+// Validates that an ExObject's resource is from the current
+// interpreter generation. Throws if the object is stale (from a
+// previous init, or created during init/finalize when generation is 0).
+void validate_generation(const ExObject &obj) {
+  if (obj.resource->generation != init_generation || init_generation == 0) {
+    throw std::runtime_error(
+        "Pythonx object is from a previous interpreter generation "
+        "and is no longer valid");
+  }
+}
+
 struct EvalInfo {
   fine::Term stdout_device;
   fine::Term stderr_device;
@@ -273,9 +359,9 @@ ExError build_py_error_from_current(ErlNifEnv *env) {
   py_traceback = py_traceback == NULL ? Py_BuildValue("") : py_traceback;
 
   auto lines = py_error_lines(env, py_type, py_value, py_traceback);
-  auto type = fine::make_resource<PyObjectResource>(py_type);
-  auto value = fine::make_resource<PyObjectResource>(py_value);
-  auto traceback = fine::make_resource<PyObjectResource>(py_traceback);
+  auto type = make_pyobject(py_type);
+  auto value = make_pyobject(py_value);
+  auto traceback = make_pyobject(py_traceback);
 
   return ExError(lines, type, value, traceback);
 }
@@ -302,6 +388,37 @@ void raise_if_failed(ErlNifEnv *env, Py_ssize_t size) {
   }
 }
 
+#if defined(PYTHONX_SAFE_BINARIES)
+
+ERL_NIF_TERM py_str_to_binary_term(ErlNifEnv *env, PyObjectPtr py_object) {
+  Py_ssize_t size;
+  auto buffer = PyUnicode_AsUTF8AndSize(py_object, &size);
+  raise_if_failed(env, buffer);
+
+  // Safe path: copy the bytes into a new Elixir binary. This avoids
+  // the dangling-pointer risk after finalization, at the cost of a memcpy.
+  ERL_NIF_TERM term;
+  auto *dst = enif_make_new_binary(env, size, &term);
+  std::memcpy(dst, buffer, size);
+  return term;
+}
+
+ERL_NIF_TERM py_bytes_to_binary_term(ErlNifEnv *env, PyObjectPtr py_object) {
+  Py_ssize_t size;
+  char *buffer;
+  auto result = PyBytes_AsStringAndSize(py_object, &buffer, &size);
+  raise_if_failed(env, result);
+
+  // Safe path: copy the bytes into a new Elixir binary. This avoids
+  // the dangling-pointer risk after finalization, at the cost of a memcpy.
+  ERL_NIF_TERM term;
+  auto *dst = enif_make_new_binary(env, size, &term);
+  std::memcpy(dst, buffer, size);
+  return term;
+}
+
+#elif defined(PYTHONX_FAST_BINARIES)
+
 ERL_NIF_TERM py_str_to_binary_term(ErlNifEnv *env, PyObjectPtr py_object) {
   Py_ssize_t size;
   auto buffer = PyUnicode_AsUTF8AndSize(py_object, &size);
@@ -309,8 +426,14 @@ ERL_NIF_TERM py_str_to_binary_term(ErlNifEnv *env, PyObjectPtr py_object) {
 
   // The buffer is immutable and lives as long as the Python object,
   // so we create the term as a resource binary to make it zero-copy.
+  // This is the fast path (PYTHONX_FAST_BINARIES): the resource binary
+  // keeps a pointer into the Python object's internal buffer. After
+  // finalization, that buffer is freed, so any Elixir binary still
+  // referencing it becomes a dangling pointer. The PYTHONX_SAFE_BINARIES
+  // macro switches to a copying implementation (enif_make_new_binary)
+  // that avoids this risk at the cost of a memcpy.
   Py_IncRef(py_object);
-  auto ex_object_resource = fine::make_resource<PyObjectResource>(py_object);
+  auto ex_object_resource = make_pyobject(py_object);
   return fine::make_resource_binary(env, ex_object_resource, buffer, size);
 }
 
@@ -322,10 +445,20 @@ ERL_NIF_TERM py_bytes_to_binary_term(ErlNifEnv *env, PyObjectPtr py_object) {
 
   // The buffer is immutable and lives as long as the Python object,
   // so we create the term as a resource binary to make it zero-copy.
+  // This is the fast path (PYTHONX_FAST_BINARIES): the resource binary
+  // keeps a pointer into the Python object's internal buffer. After
+  // finalization, that buffer is freed, so any Elixir binary still
+  // referencing it becomes a dangling pointer. The PYTHONX_SAFE_BINARIES
+  // macro switches to a copying implementation (enif_make_new_binary)
+  // that avoids this risk at the cost of a memcpy.
   Py_IncRef(py_object);
-  auto ex_object_resource = fine::make_resource<PyObjectResource>(py_object);
+  auto ex_object_resource = make_pyobject(py_object);
   return fine::make_resource_binary(env, ex_object_resource, buffer, size);
 }
+
+#else
+#error "Either PYTHONX_FAST_BINARIES or PYTHONX_SAFE_BINARIES must be defined."
+#endif
 
 std::vector<fine::Term> py_error_lines(ErlNifEnv *env, PyObjectPtr py_type,
                                        PyObjectPtr py_value,
@@ -412,23 +545,30 @@ fine::Ok<> init(ErlNifEnv *env, std::string python_dl_path,
   Py_SetPythonHome(python_home_path_w.c_str());
   Py_SetProgramName(python_executable_path_w.c_str());
 
-  Py_InitializeEx(0);
-
-  interpreter_state = PyInterpreterState_Get();
-
+  // Initialize the interpreter on the pythonx-owned main thread (see
+  // MainThread). The thread that runs Py_InitializeEx becomes
+  // CPython's main thread, and Py_FinalizeEx later has to run on it.
+  //
   // In order to use any of the Python C API functions, the calling
   // thread must hold the GIL. Since every NIF call may run on a
   // different dirty scheduler thread, we need to acquire the GIL at
   // the beginning of each NIF and release it afterwards.
   //
-  // After initializing the Python interpreter above, the current
-  // thread automatically holds the GIL, so we explicitly release it.
-  // See pyo3 [1] for an extra reference.
+  // After initializing the Python interpreter, the main thread
+  // automatically holds the GIL, so we explicitly release it and keep
+  // its thread state for finalize(). See pyo3 [1] for an extra
+  // reference.
   //
   // [1]: https://github.com/PyO3/pyo3/blob/v0.23.3/src/gil.rs#L63-L74
-  thread_states[std::this_thread::get_id()] = PyEval_SaveThread();
+  main_thread.start();
+  main_thread.run([&] {
+    Py_InitializeEx(0);
+    interpreter_state = PyInterpreterState_Get();
+    main_thread_state = PyEval_SaveThread();
+  });
 
   is_initialized = true;
+  init_generation = std::chrono::steady_clock::now().time_since_epoch().count();
 
   // We still hold the init_mutex, so we can obtain the GIL guard
   // before any other concurrent NIF. At this point we marked the
@@ -436,6 +576,9 @@ fine::Ok<> init(ErlNifEnv *env, std::string python_dl_path,
   // preparation using Python APIs. If any exception is subsequently
   // raised, it will propagate as expected, and since the interpreter
   // is initialized, the exception formatting will also work.
+  //
+  // The guard gives this dirty scheduler thread its own thread state,
+  // as it does for any other NIF call.
   auto gil_guard = PyGILGuard();
 
   // Add extra paths to sys.path
@@ -586,17 +729,156 @@ sys.modules["pythonx"] = pythonx
 
 FINE_NIF(init, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
-fine::Ok<> janitor_decref(ErlNifEnv *env, uint64_t ptr) {
+std::tuple<int64_t, int64_t> finalize(ErlNifEnv *env) {
   auto init_guard = std::lock_guard<std::mutex>(init_mutex);
 
-  // If the interpreter is no longer initialized, ignore the call
-  if (is_initialized) {
-    auto gil_guard = PyGILGuard();
-
-    auto object = reinterpret_cast<PyObjectPtr>(ptr);
-
-    Py_DecRef(object);
+  if (!is_initialized) {
+    return std::make_tuple(int64_t(0), int64_t(0));
   }
+
+  // Clear init_generation first, so that in-flight threads calling
+  // send_tagged_object fail fast (preventing callback deadlock) and
+  // destructors skip decref. This is the first mutation, before
+  // is_initialized is set to false.
+  init_generation = 0;
+
+  // Notify the Janitor to skip decref calls during finalization.
+  // This is sent from the NIF (rather than the Finalizer GenServer)
+  // so that it works regardless of whether finalize is called from
+  // the GenServer or directly by the user.
+  {
+    auto janitor_name = fine::encode(env, atoms::ElixirPythonxJanitor);
+    ErlNifPid janitor_pid;
+    if (enif_whereis_pid(env, janitor_name, &janitor_pid)) {
+      auto msg_env = enif_alloc_env();
+      auto msg = fine::encode(msg_env, fine::Atom("finalizing"));
+      enif_send(env, &janitor_pid, msg_env, msg);
+      enif_free_env(msg_env);
+    }
+  }
+
+  // Mark as not initialized so no new NIF calls can enter Python.
+  is_initialized = false;
+
+  // Wait for all in-flight threads to finish.
+  // ensure_initialized() happens under init_mutex (which we hold),
+  // so no new threads can increment. Threads that already passed
+  // ensure_initialized() hold an ActiveThreadGuard that will
+  // decrement active_threads when their NIF returns.
+  //
+  // This mirrors what Python does before Py_FinalizeEx: join threads.
+  // If a thread is stuck in an infinite loop, this blocks indefinitely,
+  // same as sys.exit() in standard Python.
+  while (true) {
+    int count;
+    {
+      auto guard = std::lock_guard<std::mutex>(active_threads_mutex);
+      count = active_threads;
+    }
+    if (count == 0) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  // All in-flight threads have released the GIL. No new threads can
+  // enter (is_initialized is false, init_mutex is held). Safe to
+  // tear down the interpreter.
+
+  // Clear compilation cache (Python objects freed by Py_FinalizeEx)
+  {
+    auto guard = std::lock_guard<std::mutex>(compilation_cache_mutex);
+    compilation_cache.clear();
+  }
+
+  // Run full CPython shutdown on the main thread (see MainThread),
+  // with the GIL held through the thread state Py_InitializeEx
+  // created there. Py_FinalizeEx runs atexit handlers, module
+  // finalizers, ResourceTracker.__del__ (stops the daemon) and
+  // releases the GIL. Returns 0 on success, -1 if finalization had
+  // errors (e.g., flushing buffered data failed).
+  //
+  // We cannot use PyGILGuard because its destructor would call
+  // PyEval_SaveThread after the interpreter is torn down.
+  int result = 0;
+  main_thread.run([&] {
+    PyEval_RestoreThread(main_thread_state);
+    result = Py_FinalizeEx();
+  });
+
+  // Nothing else will run on the main thread for this generation.
+  // Joining here means the next init() starts a fresh one.
+  main_thread.join();
+
+  // Py_FinalizeEx has freed all interpreter state and thread states.
+  // Clear our pointers to prevent use-after-free.
+  interpreter_state = nullptr;
+  main_thread_state = nullptr;
+  {
+    auto guard = std::lock_guard<std::mutex>(thread_states_mutex);
+    thread_states.clear();
+  }
+
+  // Notify the Janitor that finalization is complete, so it resumes
+  // normal decref handling. This is sent while init_mutex is still
+  // held, so no re-init can run before the Janitor receives this.
+  {
+    auto janitor_name = fine::encode(env, atoms::ElixirPythonxJanitor);
+    ErlNifPid janitor_pid;
+    if (enif_whereis_pid(env, janitor_name, &janitor_pid)) {
+      auto msg_env = enif_alloc_env();
+      auto msg = fine::encode(msg_env, fine::Atom("finalized"));
+      enif_send(env, &janitor_pid, msg_env, msg);
+      enif_free_env(msg_env);
+    }
+  }
+
+  // Intentionally do NOT call PyEval_SaveThread — the GIL and
+  // thread state are already destroyed by Py_FinalizeEx.
+
+  // Read resource_count while init_mutex is still held. A non-zero
+  // count means resource-backed binaries may still reference freed
+  // Python memory (only relevant under PYTHONX_FAST_BINARIES).
+  int leftover = resource_count.load(std::memory_order_relaxed);
+
+  return std::make_tuple(int64_t(result), int64_t(leftover));
+}
+
+FINE_NIF(finalize, ERL_NIF_DIRTY_JOB_CPU_BOUND);
+
+fine::Ok<> janitor_decref(ErlNifEnv *env, uint64_t ptr) {
+  // Check is_initialized without acquiring init_mutex. This avoids
+  // blocking the Janitor process during finalization (which holds
+  // init_mutex for its entire duration). If is_initialized is false
+  // or init_generation is 0, the interpreter is being or has been
+  // finalized and Py_FinalizeEx has freed all objects, so we skip.
+  //
+  // The read of is_initialized and init_generation is not protected
+  // by a mutex, but this is safe: both are written under init_mutex
+  // and the worst case is a stale read that either skips a decref
+  // (harmless — Py_FinalizeEx frees everything) or proceeds with one
+  // (also fine — the object is still alive). The generation check in
+  // the destructor already prevents stale objects from reaching here.
+  if (!is_initialized || init_generation == 0) {
+    return fine::Ok<>();
+  }
+
+  // Increment active_threads so that finalize() waits for this call
+  // to complete before tearing down the interpreter. Without this,
+  // finalize() could see active_threads == 0, acquire the GIL, and
+  // call Py_FinalizeEx while we are blocked in PyGILGuard() waiting
+  // for the GIL — a deadlock, since Py_FinalizeEx destroys the GIL.
+  auto thread_guard = ActiveThreadGuard();
+
+  auto gil_guard = PyGILGuard();
+
+  // Re-check after acquiring the GIL, in case finalization started
+  // while we were waiting for the GIL.
+  if (!is_initialized || init_generation == 0) {
+    return fine::Ok<>();
+  }
+
+  auto object = reinterpret_cast<PyObjectPtr>(ptr);
+
+  Py_DecRef(object);
 
   return fine::Ok<>();
 }
@@ -604,94 +886,94 @@ fine::Ok<> janitor_decref(ErlNifEnv *env, uint64_t ptr) {
 FINE_NIF(janitor_decref, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject none_new(ErlNifEnv *env) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
   auto gil_guard = PyGILGuard();
 
   // Note that Limited API has Py_GetConstant, but only since v3.13
   auto py_none = Py_BuildValue("");
   raise_if_failed(env, py_none);
 
-  return ExObject(fine::make_resource<PyObjectResource>(py_none));
+  return ExObject(make_pyobject(py_none));
 }
 
 FINE_NIF(none_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject false_new(ErlNifEnv *env) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
   auto gil_guard = PyGILGuard();
 
   auto py_bool = PyBool_FromLong(0);
   raise_if_failed(env, py_bool);
 
-  return ExObject(fine::make_resource<PyObjectResource>(py_bool));
+  return ExObject(make_pyobject(py_bool));
 }
 
 FINE_NIF(false_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject true_new(ErlNifEnv *env) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
   auto gil_guard = PyGILGuard();
 
   auto py_bool = PyBool_FromLong(1);
   raise_if_failed(env, py_bool);
 
-  return ExObject(fine::make_resource<PyObjectResource>(py_bool));
+  return ExObject(make_pyobject(py_bool));
 }
 
 FINE_NIF(true_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject long_from_int64(ErlNifEnv *env, int64_t number) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
   auto gil_guard = PyGILGuard();
 
   auto py_long = PyLong_FromLongLong(number);
   raise_if_failed(env, py_long);
 
-  return ExObject(fine::make_resource<PyObjectResource>(py_long));
+  return ExObject(make_pyobject(py_long));
 }
 
 FINE_NIF(long_from_int64, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject long_from_string(ErlNifEnv *env, std::string string, int64_t base) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
   auto gil_guard = PyGILGuard();
 
   auto py_long =
       PyLong_FromString(string.c_str(), NULL, static_cast<int>(base));
   raise_if_failed(env, py_long);
 
-  return ExObject(fine::make_resource<PyObjectResource>(py_long));
+  return ExObject(make_pyobject(py_long));
 }
 
 FINE_NIF(long_from_string, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject float_new(ErlNifEnv *env, double number) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
   auto gil_guard = PyGILGuard();
 
   auto py_float = PyFloat_FromDouble(number);
   raise_if_failed(env, py_float);
 
-  return ExObject(fine::make_resource<PyObjectResource>(py_float));
+  return ExObject(make_pyobject(py_float));
 }
 
 FINE_NIF(float_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject bytes_from_binary(ErlNifEnv *env, ErlNifBinary binary) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
   auto gil_guard = PyGILGuard();
 
   auto py_object = PyBytes_FromStringAndSize(
       reinterpret_cast<const char *>(binary.data), binary.size);
   raise_if_failed(env, py_object);
 
-  return ExObject(fine::make_resource<PyObjectResource>(py_object));
+  return ExObject(make_pyobject(py_object));
 }
 
 FINE_NIF(bytes_from_binary, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject unicode_from_string(ErlNifEnv *env, ErlNifBinary binary) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
   auto gil_guard = PyGILGuard();
 
   auto py_object = PyUnicode_FromStringAndSize(
@@ -699,13 +981,14 @@ ExObject unicode_from_string(ErlNifEnv *env, ErlNifBinary binary) {
 
   raise_if_failed(env, py_object);
 
-  return ExObject(fine::make_resource<PyObjectResource>(py_object));
+  return ExObject(make_pyobject(py_object));
 }
 
 FINE_NIF(unicode_from_string, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 fine::Term unicode_to_string(ErlNifEnv *env, ExObject ex_object) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
+  validate_generation(ex_object);
   auto gil_guard = PyGILGuard();
 
   return py_str_to_binary_term(env, ex_object.resource->py_object);
@@ -714,20 +997,23 @@ fine::Term unicode_to_string(ErlNifEnv *env, ExObject ex_object) {
 FINE_NIF(unicode_to_string, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject dict_new(ErlNifEnv *env) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
   auto gil_guard = PyGILGuard();
 
   auto py_dict = PyDict_New();
   raise_if_failed(env, py_dict);
 
-  return ExObject(fine::make_resource<PyObjectResource>(py_dict));
+  return ExObject(make_pyobject(py_dict));
 }
 
 FINE_NIF(dict_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 fine::Ok<> dict_set_item(ErlNifEnv *env, ExObject ex_object, ExObject ex_key,
                          ExObject ex_value) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
+  validate_generation(ex_object);
+  validate_generation(ex_key);
+  validate_generation(ex_value);
   auto gil_guard = PyGILGuard();
 
   auto result =
@@ -741,20 +1027,22 @@ fine::Ok<> dict_set_item(ErlNifEnv *env, ExObject ex_object, ExObject ex_key,
 FINE_NIF(dict_set_item, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject tuple_new(ErlNifEnv *env, uint64_t size) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
   auto gil_guard = PyGILGuard();
 
   auto py_tuple = PyTuple_New(size);
   raise_if_failed(env, py_tuple);
 
-  return ExObject(fine::make_resource<PyObjectResource>(py_tuple));
+  return ExObject(make_pyobject(py_tuple));
 }
 
 FINE_NIF(tuple_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 fine::Ok<> tuple_set_item(ErlNifEnv *env, ExObject ex_object, uint64_t index,
                           ExObject ex_value) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
+  validate_generation(ex_object);
+  validate_generation(ex_value);
   auto gil_guard = PyGILGuard();
 
   auto result = PyTuple_SetItem(ex_object.resource->py_object, index,
@@ -770,20 +1058,22 @@ fine::Ok<> tuple_set_item(ErlNifEnv *env, ExObject ex_object, uint64_t index,
 FINE_NIF(tuple_set_item, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject list_new(ErlNifEnv *env, uint64_t size) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
   auto gil_guard = PyGILGuard();
 
   auto py_tuple = PyList_New(size);
   raise_if_failed(env, py_tuple);
 
-  return ExObject(fine::make_resource<PyObjectResource>(py_tuple));
+  return ExObject(make_pyobject(py_tuple));
 }
 
 FINE_NIF(list_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 fine::Ok<> list_set_item(ErlNifEnv *env, ExObject ex_object, uint64_t index,
                          ExObject ex_value) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
+  validate_generation(ex_object);
+  validate_generation(ex_value);
   auto gil_guard = PyGILGuard();
 
   auto result = PyList_SetItem(ex_object.resource->py_object, index,
@@ -799,19 +1089,21 @@ fine::Ok<> list_set_item(ErlNifEnv *env, ExObject ex_object, uint64_t index,
 FINE_NIF(list_set_item, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject set_new(ErlNifEnv *env) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
   auto gil_guard = PyGILGuard();
 
   auto py_set = PySet_New(NULL);
   raise_if_failed(env, py_set);
 
-  return ExObject(fine::make_resource<PyObjectResource>(py_set));
+  return ExObject(make_pyobject(py_set));
 }
 
 FINE_NIF(set_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 fine::Ok<> set_add(ErlNifEnv *env, ExObject ex_object, ExObject ex_key) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
+  validate_generation(ex_object);
+  validate_generation(ex_key);
   auto gil_guard = PyGILGuard();
 
   auto result =
@@ -824,7 +1116,7 @@ fine::Ok<> set_add(ErlNifEnv *env, ExObject ex_object, ExObject ex_key) {
 FINE_NIF(set_add, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject pid_new(ErlNifEnv *env, ErlNifPid pid) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
   auto gil_guard = PyGILGuard();
 
   // ErlNifPid is self-contained struct, not bound to any env, so it's
@@ -849,25 +1141,27 @@ ExObject pid_new(ErlNifEnv *env, ErlNifPid pid) {
   auto py_pid = PyObject_Call(py_PID, py_PID_args, NULL);
   raise_if_failed(env, py_pid);
 
-  return ExObject(fine::make_resource<PyObjectResource>(py_pid));
+  return ExObject(make_pyobject(py_pid));
 }
 
 FINE_NIF(pid_new, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject object_repr(ErlNifEnv *env, ExObject ex_object) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
+  validate_generation(ex_object);
   auto gil_guard = PyGILGuard();
 
   auto py_repr = PyObject_Repr(ex_object.resource->py_object);
   raise_if_failed(env, py_repr);
 
-  return ExObject(fine::make_resource<PyObjectResource>(py_repr));
+  return ExObject(make_pyobject(py_repr));
 }
 
 FINE_NIF(object_repr, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
+  validate_generation(ex_object);
   auto gil_guard = PyGILGuard();
 
   auto py_object = ex_object.resource->py_object;
@@ -949,7 +1243,7 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
       auto py_item = PyTuple_GetItem(py_object, i);
       raise_if_failed(env, py_item);
       Py_IncRef(py_item);
-      auto ex_item = ExObject(fine::make_resource<PyObjectResource>(py_item));
+      auto ex_item = ExObject(make_pyobject(py_item));
       terms.push_back(fine::encode(env, ex_item));
     }
 
@@ -973,7 +1267,7 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
       auto py_item = PyList_GetItem(py_object, i);
       raise_if_failed(env, py_item);
       Py_IncRef(py_item);
-      auto ex_item = ExObject(fine::make_resource<PyObjectResource>(py_item));
+      auto ex_item = ExObject(make_pyobject(py_item));
       terms.push_back(fine::encode(env, ex_item));
     }
 
@@ -998,10 +1292,10 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
 
     while (PyDict_Next(py_object, &pos, &py_key, &py_value)) {
       Py_IncRef(py_key);
-      auto ex_key = ExObject(fine::make_resource<PyObjectResource>(py_key));
+      auto ex_key = ExObject(make_pyobject(py_key));
 
       Py_IncRef(py_value);
-      auto ex_value = ExObject(fine::make_resource<PyObjectResource>(py_value));
+      auto ex_value = ExObject(make_pyobject(py_value));
 
       terms.push_back(fine::encode(env, std::make_tuple(ex_key, ex_value)));
     }
@@ -1050,7 +1344,7 @@ fine::Term decode_once(ErlNifEnv *env, ExObject ex_object) {
 
     while ((py_item = PyIter_Next(py_iter)) != NULL) {
       // Note that PyIter_Next already returns a new reference
-      auto ex_item = ExObject(fine::make_resource<PyObjectResource>(py_item));
+      auto ex_item = ExObject(make_pyobject(py_item));
       terms.push_back(fine::encode(env, ex_item));
     }
 
@@ -1269,7 +1563,12 @@ std::tuple<std::optional<ExObject>, fine::Term>
 eval(ErlNifEnv *env, ErlNifBinary code, std::string code_md5,
      std::vector<std::tuple<ErlNifBinary, ExObject>> globals,
      fine::Term stdout_device, fine::Term stderr_device) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
+
+  // Validate that all globals objects are from the current generation.
+  for (const auto &[_key, value] : globals) {
+    validate_generation(value);
+  }
 
   // Step 1: compile (or get cached result)
 
@@ -1441,7 +1740,7 @@ eval(ErlNifEnv *env, ErlNifBinary code, std::string code_md5,
   if (py_last_expr_code != nullptr) {
     auto py_result = PyEval_EvalCode(py_last_expr_code, py_globals, py_globals);
     raise_if_failed(env, py_result);
-    result = ExObject(fine::make_resource<PyObjectResource>(py_result));
+    result = ExObject(make_pyobject(py_result));
   }
 
   // Step 4: flat-decode globals
@@ -1474,7 +1773,7 @@ eval(ErlNifEnv *env, ErlNifBinary code, std::string code_md5,
 
     // Incref before making the resource
     Py_IncRef(py_value);
-    auto ex_value = ExObject(fine::make_resource<PyObjectResource>(py_value));
+    auto ex_value = ExObject(make_pyobject(py_value));
     value_terms.push_back(fine::encode(env, ex_value));
   }
 
@@ -1491,7 +1790,8 @@ FINE_NIF(eval, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 std::variant<fine::Ok<fine::Term>, fine::Error<std::string, ExError>>
 dump_object(ErlNifEnv *env, ExObject ex_object) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
+  validate_generation(ex_object);
   auto gil_guard = PyGILGuard();
 
   std::string pickle_module_name;
@@ -1532,7 +1832,7 @@ dump_object(ErlNifEnv *env, ExObject ex_object) {
 FINE_NIF(dump_object, ERL_NIF_DIRTY_JOB_CPU_BOUND);
 
 ExObject load_object(ErlNifEnv *env, ErlNifBinary binary) {
-  ensure_initialized();
+  auto thread_guard = ensure_initialized();
   auto gil_guard = PyGILGuard();
 
   auto py_pickle = PyImport_ImportModule("pickle");
@@ -1555,7 +1855,7 @@ ExObject load_object(ErlNifEnv *env, ErlNifBinary binary) {
   auto py_object = PyObject_Call(py_loads, py_loads_args, NULL);
   raise_if_failed(env, py_object);
 
-  return ExObject(fine::make_resource<PyObjectResource>(py_object));
+  return ExObject(make_pyobject(py_object));
 }
 
 FINE_NIF(load_object, ERL_NIF_DIRTY_JOB_CPU_BOUND);
@@ -1632,6 +1932,18 @@ extern "C" void
 pythonx_handle_send_tagged_object(const char *pid_bytes, const char *tag,
                                   pythonx::python::PyObjectPtr *py_object,
                                   const char *eval_info_bytes) {
+  // If finalization has started (init_generation == 0), raise a Python
+  // exception instead of sending. During Py_FinalizeEx's thread joining,
+  // Python threads spawned by user code may call send_tagged_object.
+  // The guard raises RuntimeError so the thread unblocks instead of
+  // touching BEAM APIs (enif_send, enif_alloc_env) with a torn-down
+  // interpreter, which would crash or deadlock.
+  if (pythonx::init_generation == 0) {
+    pythonx::python::PyErr_SetString(pythonx::python::PyExc_RuntimeError,
+                    "Pythonx is finalizing, cannot send tagged object");
+    return;
+  }
+
   auto eval_info = eval_info_from_bytes(eval_info_bytes);
 
   auto caller_env = get_caller_env(eval_info);
@@ -1649,7 +1961,7 @@ pythonx_handle_send_tagged_object(const char *pid_bytes, const char *tag,
       env, std::make_tuple(
                fine::Atom(tag),
                pythonx::ExObject(
-                   fine::make_resource<pythonx::PyObjectResource>(py_object))));
+                   pythonx::make_pyobject(py_object))));
   enif_send(caller_env, &pid, env, msg);
   enif_free_env(env);
 }

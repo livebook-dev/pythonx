@@ -22,7 +22,7 @@ defmodule Pythonx.Janitor do
 
   @impl true
   def init({}) do
-    {:ok, {}}
+    {:ok, %{finalizing: false}}
   end
 
   @impl true
@@ -31,19 +31,36 @@ defmodule Pythonx.Janitor do
   end
 
   @impl true
+  def handle_info(:finalizing, state) do
+    # Finalization is starting. Skip decref calls from now on —
+    # Py_FinalizeEx will free all Python objects regardless.
+    # Output messages are still forwarded normally.
+    {:noreply, %{state | finalizing: true}}
+  end
+
+  def handle_info(:finalized, state) do
+    # Finalization is complete. Resume normal decref handling.
+    {:noreply, %{state | finalizing: false}}
+  end
+
   def handle_info({:decref, ptr}, state) do
     # After %Pythonx.Object{} is garbage collected, the C++ code
     # sends us a message to decrement refcount of the corresponding
     # Python object in a separate NIF call. For more details see
     # ExObjectResource::destructor in the C++ code.
-    Pythonx.NIF.janitor_decref(ptr)
+    #
+    # Skip during finalization — Py_FinalizeEx frees everything.
+    unless state.finalizing do
+      Pythonx.NIF.janitor_decref(ptr)
+    end
 
     {:noreply, state}
   end
 
   def handle_info({:output, output, device}, state) do
     # We send the IO request and continue without waiting for the IO
-    # reply.
+    # reply. Output is forwarded even during finalization, since
+    # Py_FinalizeEx may flush stdout/stderr from module finalizers.
     send(device, {:io_request, self(), make_ref(), {:put_chars, :unicode, output}})
     {:noreply, state}
   end

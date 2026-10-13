@@ -21,7 +21,32 @@ defmodule Pythonx.MixProject do
       compilers: [:elixir_make] ++ Mix.compilers(),
       docs: docs(),
       package: package(),
-      make_env: fn -> %{"FINE_INCLUDE_DIR" => Fine.include_dir()} end,
+      make_env: fn ->
+        binaries = Application.get_env(:pythonx, :binaries, :fast)
+        binaries_str = if(binaries == :safe, do: "safe", else: "fast")
+
+        # Write a stamp file so that changing the :binaries config
+        # triggers a NIF recompile. The Makefile depends on this file's
+        # timestamp. Only write if the value changed, to avoid
+        # unnecessary recompiles on every mix compile.
+        manifest = Mix.Project.manifest_path()
+        stamp = Path.join(manifest, "pythonx_binaries.stamp")
+
+        unless File.dir?(manifest) do
+          File.mkdir_p!(manifest)
+        end
+
+        existing = if File.exists?(stamp), do: File.read!(stamp), else: nil
+
+        if existing != binaries_str do
+          File.write!(stamp, binaries_str)
+        end
+
+        %{
+          "FINE_INCLUDE_DIR" => Fine.include_dir(),
+          "PYTHONX_BINARIES" => binaries_str
+        }
+      end,
       # Precompilation
       make_precompiler: {:nif, CCPrecompiler},
       make_precompiler_url: "#{@github_url}/releases/download/v#{@version}/@{artefact_filename}",

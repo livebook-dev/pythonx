@@ -8,6 +8,8 @@ defmodule Pythonx do
 
   @moduledoc readme_docs
 
+  @binaries Application.compile_env(:pythonx, :binaries, :fast)
+
   alias Pythonx.Object
 
   @install_env_name "PYTHONX_INIT_STATE"
@@ -218,6 +220,141 @@ defmodule Pythonx do
     end
 
     Pythonx.NIF.init(python_dl_path, python_home_path, python_executable_path, opts[:sys_paths])
+  end
+
+  @doc """
+  Finalizes the Python interpreter, releasing all resources.
+
+  This runs the full CPython shutdown sequence, including atexit handlers
+  and module finalizers. After calling this function, the interpreter is
+  no longer initialized and must be re-initialized with `uv_init/2` or
+  `init/4` before any Python code can be evaluated.
+
+  When the `:pythonx` application is running under OTP supervision,
+  finalization happens automatically on shutdown via the
+  `Pythonx.Finalizer` GenServer. You only need to call this function
+  manually if you are using Pythonx outside the application lifecycle,
+  such as in an `.exs` script, a Mix task, or a test.
+
+  In those cases, call `Pythonx.finalize/0` before exiting so that
+  Python's shutdown sequence runs cleanly (e.g., to release
+  `multiprocessing` semaphores and stop the resource tracker daemon).
+  Use `System.stop/0` rather than `System.halt/0` to ensure the
+  application shutdown callback fires.
+
+  Calling this function while the `:pythonx` application is running
+  raises an error, as tearing down the interpreter out from under the
+  supervision tree would leave the Janitor and ObjectTracker in an
+  inconsistent state.
+
+  It is safe to call even if the interpreter was never initialized
+  (it is a no-op in that case).
+
+  After finalization, any `Pythonx.Object` structs from the previous
+  interpreter session are stale and will raise an error if used. This
+  includes objects passed to `Pythonx.eval/3` as globals or decoded
+  with `Pythonx.decode/1`.
+
+  If the interpreter is re-initialized after finalization, objects from
+  the previous session are detected via an internal generation counter
+  and rejected with a clear error message.
+
+  ## Main thread
+
+  CPython requires `Py_FinalizeEx` to run on the same OS thread that ran
+  `Py_InitializeEx`. NIFs run on whichever dirty scheduler picks them
+  up, so Pythonx starts a native thread of its own during
+  initialization and runs both calls there. That thread is what Python
+  sees as `threading.main_thread()`; code evaluated with `eval/3` runs
+  on dirty scheduler threads, which Python reports as `Dummy-N`
+  threads. Python-level signal handlers (`signal.signal/2`) only run on
+  the main thread while it executes Python code, and this thread never
+  does, so they do not run. The thread is joined by `finalize/0`, and a
+  subsequent initialization starts a fresh one.
+
+  ## Re-initialization limits
+
+  Finalizing and then initializing again is supported for the
+  interpreter itself and for pure-Python code, including the standard
+  library: imports, `threading`, `logging` and `atexit` all work in
+  the new interpreter. CPython documents that some memory is leaked on
+  every `Py_FinalizeEx` + `Py_InitializeEx` cycle, so a process that
+  cycles many times will grow.
+
+  C extensions are not guaranteed to survive a cycle. CPython never
+  unloads an extension's shared library, so any process-global state
+  the extension set up during its first import is still there when
+  the new interpreter imports it again, and the extension may not be
+  prepared for that. Observed with CPython 3.13 on macOS arm64:
+
+    * `numpy` 2.1.2 fails to import a second time with a clean
+      `RuntimeError: CPU dispatcher tracer already initlized`.
+
+    * `torch` 2.14.0 crashes the VM on the second import, with a
+      segfault inside `libtorch_python.dylib`'s module initialization.
+
+  Treat `finalize/0` followed by re-initialization as a tool for
+  processes that only use pure-Python code, or that exit after
+  finalizing. If an application depends on such extensions, restart
+  the OS process instead of cycling the interpreter.
+
+  > #### Multiprocessing processes {: .warning}
+  >
+  > `Py_FinalizeEx` terminates daemonic child processes and joins
+  > non-daemonic ones, matching normal Python shutdown behavior. If
+  > non-daemonic `multiprocessing.Process` instances are still running,
+  > this call will block until they finish, same as `sys.exit()` in
+  > standard Python.
+
+  > #### In-flight evaluations {: .warning}
+  >
+  > If Python code is being evaluated concurrently (from another
+  > Elixir process), this function waits for all in-flight evaluations
+  > to complete before finalizing. If an evaluation is stuck in an
+  > infinite loop, this call blocks indefinitely, same as `sys.exit()`
+  > in standard Python.
+
+  > #### Resource cleanup {: .warning}
+  >
+  > `Py_FinalizeEx` runs `atexit` handlers and calls `__del__` on
+  > remaining objects, but CPython destroys modules in random order,
+  > so a `__del__` that calls into an already-finalized module may
+  > fail silently. OS-level resources (open file handles, sockets,
+  > subprocesses) that were not explicitly closed may survive
+  > finalization. They are reclaimed by the OS on process exit, but
+  > not on `finalize` + re-init cycles. Use context managers (`with`
+  > statements) or explicit `close()` calls in Python code to avoid
+  > this.
+  """
+  @spec finalize() :: :ok | {:error, Pythonx.FinalizeError.t()}
+  def finalize do
+    if pythonx_started?() do
+      raise RuntimeError,
+            "Pythonx.finalize/0 cannot be called while the :pythonx " <>
+              "application is running. Finalization is handled " <>
+              "automatically on application shutdown. If you are using " <>
+              "Pythonx outside of OTP supervision (e.g., in a script or " <>
+              "Mix task), make sure the application is not started."
+    end
+
+    __finalize__()
+  end
+
+  @doc false
+  @spec __finalize__() :: :ok | {:error, Pythonx.FinalizeError.t()}
+  def __finalize__ do
+    {return_code, resource_count} = Pythonx.NIF.finalize()
+
+    # A non-zero return_code always indicates failure. A non-zero
+    # resource_count only indicates failure when using :fast binaries,
+    # because resource-backed binaries may reference freed Python
+    # memory. With :safe binaries, leftover resources are harmless
+    # (the bytes were copied).
+    if return_code != 0 or (@binaries == :fast and resource_count > 0) do
+      {:error, %Pythonx.FinalizeError{return_code: return_code, resource_count: resource_count}}
+    else
+      :ok
+    end
   end
 
   @doc ~S'''

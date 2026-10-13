@@ -3,14 +3,17 @@ defmodule Pythonx.Application do
 
   use Application
 
+  @finalization Application.compile_env(:pythonx, :finalization, true)
+
   @impl true
   def start(_type, _args) do
     enable_sigchld()
 
-    children = [
-      Pythonx.Janitor,
-      Pythonx.ObjectTracker
-    ]
+    children =
+      [
+        Pythonx.Janitor,
+        Pythonx.ObjectTracker
+      ] ++ if(@finalization, do: [Pythonx.Finalizer], else: [])
 
     opts = [strategy: :one_for_one, name: Pythonx.Supervisor]
 

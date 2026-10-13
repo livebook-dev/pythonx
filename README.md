@@ -150,6 +150,42 @@ Note that currently the `~PY` sigil does not work as part of Mix project
 code. This limitation is intentional, since in actual applications it
 is preferable to manage the Python globals explicitly.
 
+### Finalization
+
+When a normal Python executable terminates, it runs a sophisticated shutdown
+sequence called "finalization". This is what triggers most of the cleanup
+behavior you might expect.  This includes things like as object destructors,
+`atexit` handlers and module finalizers.
+
+Without finalizing, many libraries can misbehave subtly--including the Python
+standard library!
+
+Some real examples observed include:
+- warnings about leaked `multiprocessing` semaphores
+- log messages not actually emitted
+- `readline` history not written
+- files created with `tempfile` aren't deleted
+- changes to a `shelve` database aren't persisted
+- files and sockets aren't closed
+- context managers in generators may not call their exit hooks
+
+When running under a full OTP supervision tree (i.e. in most apps + IEx),
+Pythonx automatically finalizes the interpreter as part of a graceful shutdown.
+
+Some environments don't run a full supervision tree.  Typically that will be
+things like exscripts and Mix tasks.  In these situations, you can also call
+`Pythonx.finalize/0` manually.
+
+After finalization, the interpreter can be re-initialized with
+`Pythonx.uv_init/2` or `Pythonx.init/4`. Objects from the previous interpreter
+session are detected via an internal generation counter and rejected with a
+clear error message.
+
+Re-initialization is reliable for pure-Python code, but C extensions with
+process-global state (`numpy`, `torch`) may fail or crash on their second
+import; see the "Re-initialization limits" section in the `Pythonx.finalize/0`
+docs.
+
 ## Python API
 
 Pythonx provides a Python module named `pythonx` with extra interoperability
