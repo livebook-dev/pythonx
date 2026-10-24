@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [v0.4.11](https://github.com/livebook-dev/pythonx/tree/v0.4.11) (2026-10-24)
+
+### Fixed
+
+- Objects sent with `pythonx.send_tagged_object` being freed too early ([#51](https://github.com/livebook-dev/pythonx/pull/51))
+- Downloading binaries when the response has large headers
+
 ## [v0.4.10](https://github.com/livebook-dev/pythonx/tree/v0.4.10) (2026-05-18)
 
 ### Added
