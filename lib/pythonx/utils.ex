@@ -31,7 +31,7 @@ defmodule Pythonx.Utils do
         ]
       ] ++ proxy_http_options
 
-    options = [body_format: :binary]
+    options = [body_format: :binary, max_header_size: 32_768]
 
     request = {url, headers}
 
